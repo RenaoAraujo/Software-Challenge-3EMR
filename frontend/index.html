@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("emr-theme");
+          if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Facilitador de separação de medicamentos — painel robôs e ordens de serviço."
+    />
+    <title>EMR — Facilitador de separação</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#conteudo-principal">Ir para o conteúdo</a>
+    <div class="layout">
+      <header class="header" role="banner">
+        <div class="header__brand">
+          <div class="header__partner-logo">
+            <img
+              class="header__logo-img header__logo-img--softtek"
+              src="/img/SofttekLogo-4web.svg"
+              width="120"
+              height="48"
+              alt="Softtek"
+            />
+            <img
+              class="header__logo-img header__logo-img--apsen"
+              src="/img/logo_apsen.svg"
+              width="100"
+              height="40"
+              alt="Apsen Farmacêutica"
+            />
+          </div>
+          <div class="header__titles">
+            <h1 class="header__title">EMR Facilitador</h1>
+            <p class="header__subtitle">Separação assistida por robô — visão operacional segura</p>
+          </div>
+        </div>
+        <div class="header__meta">
+          <button
+            type="button"
+            class="theme-toggle"
+            id="theme-toggle"
+            aria-label="Alternar tema claro e escuro"
+          >
+            <svg
+              class="theme-toggle__icon theme-toggle__icon--sun"
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              fill="none"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.75" />
+              <path
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+              />
+            </svg>
+            <svg
+              class="theme-toggle__icon theme-toggle__icon--moon"
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              fill="none"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M21 14.5A8.5 8.5 0 0 1 9.5 3a6.5 6.5 0 1 0 11.5 11.5Z"
+              />
+            </svg>
+          </button>
+          <span class="badge badge--neutral" id="conn-status" role="status">Verificando…</span>
+        </div>
+      </header>
+
+      <div class="main-grid" id="conteudo-principal">
+        <aside class="panel panel--list" aria-labelledby="robots-heading">
+          <div class="panel__head">
+            <h2 id="robots-heading" class="panel__title">Separadores</h2>
+            <button type="button" class="btn btn--ghost btn--small" id="btn-refresh" title="Atualizar lista">
+              Atualizar
+            </button>
+          </div>
+
+          <div class="list-section">
+            <h3 class="list-section__title">Separadores cadastrados</h3>
+            <label class="field list-section__search">
+              <span class="field__label">Pesquisar por nome</span>
+              <input
+                type="search"
+                id="robot-search"
+                name="robot_search"
+                maxlength="128"
+                placeholder="Digite parte do nome…"
+                autocomplete="off"
+                aria-controls="robot-list"
+              />
+            </label>
+            <ul class="robot-list" id="robot-list" role="listbox" aria-label="Lista de separadores"></ul>
+          </div>
+
+          <details class="disclosure disclosure--new" id="new-robot-disclosure">
+            <summary class="disclosure__summary">
+              <span class="disclosure__summary-text">Novo separador</span>
+              <span class="disclosure__chevron" aria-hidden="true"></span>
+            </summary>
+            <div class="disclosure__body">
+              <p class="disclosure__lede">
+                Identificação única, nome e localização. Não é necessário o robô estar online para cadastrar.
+              </p>
+              <form id="form-new-robot" class="form-stack form-stack--new">
+                <label class="field">
+                  <span class="field__label">Código (identificação única)</span>
+                  <input type="text" id="new-code" name="code" required maxlength="32" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Nome</span>
+                  <input type="text" id="new-name" name="name" required maxlength="128" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Localização</span>
+                  <input
+                    type="text"
+                    id="new-location"
+                    name="location"
+                    maxlength="256"
+                    placeholder="Ex.: Centro cirúrgico — Ala B"
+                  />
+                </label>
+                <label class="field">
+                  <span class="field__label">Modelo <span class="field__optional">(opcional)</span></span>
+                  <input type="text" id="new-model" name="model" maxlength="128" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Capacidade nominal (un/h)</span>
+                  <input type="number" id="new-throughput" name="max_units_per_hour" min="1" max="100000" value="500" />
+                </label>
+                <button type="submit" class="btn btn--primary btn--block btn--glow" id="btn-new-robot">Cadastrar separador</button>
+              </form>
+            </div>
+          </details>
+        </aside>
+
+        <section class="panel panel--detail" id="detail-panel" aria-live="polite">
+          <div class="detail-placeholder" id="robot-detail-empty">
+            <div class="detail-placeholder__ring" aria-hidden="true">
+              <span class="detail-placeholder__glyph">◇</span>
+            </div>
+            <h2 class="detail-placeholder__title" id="placeholder-heading">Detalhes do separador</h2>
+            <p class="detail-placeholder__text">
+              Selecione um separador na lista ao lado para ver execução, ordem de serviço, cliente, progresso e tempo
+              decorrido.
+            </p>
+          </div>
+          <article class="robot-detail hidden" id="robot-detail-article" aria-labelledby="robot-detail-heading">
+            <header class="robot-detail__header">
+              <div class="robot-detail__intro">
+                <h2 class="robot-detail__title" id="robot-detail-heading"></h2>
+                <p class="robot-detail__meta" id="robot-detail-meta"></p>
+              </div>
+              <div class="robot-detail__badges" id="robot-detail-badges"></div>
+            </header>
+            <dl class="robot-detail__stats">
+              <div class="robot-detail__row">
+                <dt>Número da ordem de serviço</dt>
+                <dd id="robot-detail-os">—</dd>
+              </div>
+              <div class="robot-detail__row">
+                <dt>Cliente</dt>
+                <dd id="robot-detail-client">—</dd>
+              </div>
+            </dl>
+            <section class="robot-detail__medicines-block" id="robot-detail-medicines-block" hidden>
+              <h3 class="robot-detail__subsection-title">Remédios a separar</h3>
+              <ul class="robot-detail__medicine-list" id="robot-detail-medicines" aria-label="Lista de medicamentos"></ul>
+              <p class="robot-detail__medicine-empty" id="robot-detail-medicines-empty" hidden>
+                Nenhum medicamento cadastrado nesta ordem.
+              </p>
+            </section>
+            <div class="robot-detail__metrics">
+              <div class="metric-box metric-box--progress">
+                <span class="metric-box__label">Remédios separados / total</span>
+                <p class="metric-box__value metric-box__value--elapsed" id="robot-detail-units">—</p>
+                <span class="metric-box__hint">unidades</span>
+              </div>
+              <div class="metric-box metric-box--time">
+                <span class="metric-box__label">Tempo desde o início</span>
+                <p class="metric-box__value metric-box__value--elapsed" id="robot-detail-elapsed">—</p>
+                <span class="metric-box__sublabel" id="robot-detail-start">—</span>
+              </div>
+            </div>
+            <div class="robot-detail__camera-wrap">
+              <label class="field robot-detail__camera">
+                <span class="field__label">Captura (câmera)</span>
+                <input
+                  type="file"
+                  id="robot-detail-camera"
+                  name="camera_capture"
+                  accept="image/*"
+                  capture="environment"
+                  aria-describedby="robot-detail-camera-hint"
+                />
+                <span class="robot-detail__camera-hint" id="robot-detail-camera-hint">
+                  No celular ou tablet, o sistema pode abrir a câmera para registrar a separação. No desktop, você pode
+                  escolher um arquivo de imagem.
+                </span>
+              </label>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <div
+        class="toast-region"
+        id="toast-region"
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="true"
+      ></div>
+    </div>
+
+    <div
+      class="modal"
+      id="delete-robot-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-modal-title"
+      aria-describedby="delete-modal-message"
+    >
+      <button type="button" class="modal__backdrop" data-modal-dismiss aria-label="Fechar"></button>
+      <div class="modal__panel">
+        <div class="modal__icon-wrap" aria-hidden="true">
+          <svg class="modal__icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24">
+            <path
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"
+            />
+          </svg>
+        </div>
+        <h2 id="delete-modal-title" class="modal__title">Excluir separador?</h2>
+        <p class="modal__text" id="delete-modal-message"></p>
+        <div class="modal__actions">
+          <button type="button" class="btn btn--ghost" id="delete-modal-cancel">Cancelar</button>
+          <button type="button" class="btn btn--danger" id="delete-modal-confirm">Excluir</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal"
+      id="edit-robot-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-modal-title"
+    >
+      <button type="button" class="modal__backdrop" data-edit-modal-dismiss aria-label="Fechar"></button>
+      <div class="modal__panel modal__panel--form">
+        <div class="modal__icon-wrap modal__icon-wrap--edit" aria-hidden="true">
+          <svg class="modal__icon" xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24">
+            <path
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"
+            />
+          </svg>
+        </div>
+        <h2 id="edit-modal-title" class="modal__title">Editar separador</h2>
+        <form id="form-edit-robot" class="form-stack modal__form">
+          <input type="hidden" id="edit-robot-id" name="id" value="" />
+          <label class="field">
+            <span class="field__label">Código</span>
+            <input type="text" id="edit-code" name="code" required maxlength="32" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span class="field__label">Nome</span>
+            <input type="text" id="edit-name" name="name" required maxlength="128" />
+          </label>
+          <label class="field">
+            <span class="field__label">Localização</span>
+            <input type="text" id="edit-location" name="location" maxlength="256" />
+          </label>
+          <label class="field">
+            <span class="field__label">Modelo</span>
+            <input type="text" id="edit-model" name="model" maxlength="128" />
+          </label>
+          <div class="modal__actions modal__actions--form">
+            <button type="button" class="btn btn--ghost" id="edit-modal-cancel">Cancelar</button>
+            <button type="submit" class="btn btn--primary" id="edit-modal-save">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
