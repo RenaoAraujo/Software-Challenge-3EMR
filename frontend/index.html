@@ -491,12 +491,8 @@
                     <input type="search" id="relatorio-os-filtro-os" name="os" maxlength="64" autocomplete="off" placeholder="Contém…" />
                   </label>
                   <label class="field">
-                    <span class="field__label">Nome</span>
-                    <input type="search" id="relatorio-os-nome" name="nome" maxlength="128" autocomplete="off" placeholder="Parte do nome do cliente" />
-                  </label>
-                  <label class="field">
                     <span class="field__label">Cliente</span>
-                    <input type="search" id="relatorio-os-cliente" name="cliente" maxlength="256" autocomplete="off" placeholder="Outro trecho do cliente" />
+                    <input type="search" id="relatorio-os-cliente" name="cliente" maxlength="256" autocomplete="off" placeholder="Trecho do nome do cliente" />
                   </label>
                   <label class="field">
                     <span class="field__label">Situação</span>
@@ -535,8 +531,8 @@
                 </div>
               </div>
               <p class="field__hint" id="relatorio-os-dates-hint">
-                Datas em branco = todo o histórico. Nome e Cliente no cliente: basta um dos campos coincidir (OU). Os demais
-                filtros combinam com E.
+                Datas em branco = todo o histórico. O campo Cliente busca por trecho no nome do cliente. Os demais filtros
+                combinam com E.
               </p>
             </form>
             <div id="relatorio-os-result" class="relatorio-os-result" aria-live="polite"></div>

@@ -139,7 +139,6 @@
     relatorioOsDe: document.getElementById("relatorio-os-de"),
     relatorioOsAte: document.getElementById("relatorio-os-ate"),
     relatorioOsFiltroOs: document.getElementById("relatorio-os-filtro-os"),
-    relatorioOsNome: document.getElementById("relatorio-os-nome"),
     relatorioOsCliente: document.getElementById("relatorio-os-cliente"),
     relatorioOsSituacao: document.getElementById("relatorio-os-situacao"),
     relatorioOsNomeSeparador: document.getElementById("relatorio-os-nome-separador"),
@@ -1165,8 +1164,6 @@
       }
       const fo = el.relatorioOsFiltroOs?.value?.trim();
       if (fo) params.set("os", fo);
-      const nm = el.relatorioOsNome?.value?.trim();
-      if (nm) params.set("nome", nm);
       const cl = el.relatorioOsCliente?.value?.trim();
       if (cl) params.set("cliente", cl);
       const sit = el.relatorioOsSituacao?.value?.trim();
@@ -1207,7 +1204,6 @@
     if (el.relatorioOsDe) el.relatorioOsDe.value = "";
     if (el.relatorioOsAte) el.relatorioOsAte.value = "";
     if (el.relatorioOsFiltroOs) el.relatorioOsFiltroOs.value = "";
-    if (el.relatorioOsNome) el.relatorioOsNome.value = "";
     if (el.relatorioOsCliente) el.relatorioOsCliente.value = "";
     if (el.relatorioOsSituacao) el.relatorioOsSituacao.value = "";
     if (el.relatorioOsNomeSeparador) el.relatorioOsNomeSeparador.value = "";
