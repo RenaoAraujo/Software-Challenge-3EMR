@@ -45,6 +45,9 @@
           </div>
         </div>
         <div class="header__meta">
+          <button type="button" class="btn btn--ghost btn--small" id="btn-logout" title="Sair" aria-label="Sair da conta">
+            Sair
+          </button>
           <button
             type="button"
             class="theme-toggle"
@@ -90,13 +93,107 @@
         </div>
       </header>
 
-      <div class="main-grid" id="conteudo-principal">
+      <nav class="app-nav" aria-label="Áreas do sistema">
+        <div class="app-nav__inner">
+          <button
+            type="button"
+            class="app-nav__tab app-nav__tab--active"
+            id="tab-operacao"
+            data-view="operacao"
+            aria-controls="view-operacao"
+            aria-selected="true"
+          >
+            Operação
+          </button>
+          <button
+            type="button"
+            class="app-nav__tab"
+            id="tab-historico"
+            data-view="historico"
+            aria-controls="view-historico"
+            aria-selected="false"
+          >
+            Histórico
+          </button>
+          <button
+            type="button"
+            class="app-nav__tab hidden"
+            id="tab-logs"
+            data-view="logs"
+            aria-controls="view-logs"
+            aria-selected="false"
+            hidden
+          >
+            Logs
+          </button>
+        </div>
+      </nav>
+
+      <div class="view-stack" id="conteudo-principal">
+        <div class="operacao-layout view-panel" id="view-operacao" role="tabpanel" aria-labelledby="tab-operacao">
+        <section class="operacao-coletiva panel" aria-labelledby="operacao-coletiva-heading">
+          <div class="operacao-coletiva__head">
+            <h2 id="operacao-coletiva-heading" class="operacao-coletiva__title">Atividade dos separadores</h2>
+            <p class="operacao-coletiva__lede">
+              Visão compartilhada para todos os usuários: o que cada separador está executando agora. Atualiza
+              automaticamente a cada poucos segundos.
+            </p>
+          </div>
+          <div
+            id="operacao-coletiva-grid"
+            class="operacao-coletiva__grid"
+            role="list"
+            aria-live="polite"
+            aria-label="Separadores com ordem de serviço em andamento"
+          ></div>
+        </section>
+        <div class="main-grid">
         <aside class="panel panel--list" aria-labelledby="robots-heading">
           <div class="panel__head">
             <h2 id="robots-heading" class="panel__title">Separadores</h2>
-            <button type="button" class="btn btn--ghost btn--small" id="btn-refresh" title="Atualizar lista">
-              Atualizar
-            </button>
+            <div class="panel__head-actions">
+              <button type="button" class="btn btn--ghost btn--small" id="btn-refresh" title="Atualizar lista">
+                Atualizar
+              </button>
+              <button
+                type="button"
+                class="btn btn--primary btn--small btn--icon-plus"
+                id="btn-open-new-robot"
+                title="Novo separador"
+                aria-label="Novo separador"
+                aria-haspopup="dialog"
+                aria-controls="new-robot-modal"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    d="M12 5v14M5 12h14"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="btn btn--ghost btn--small btn--icon-plus"
+                id="btn-open-manual-os"
+                title="Nova OS manual (teste)"
+                aria-label="Nova OS manual (teste)"
+                aria-haspopup="dialog"
+                aria-controls="manual-os-modal"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"
+                  />
+                  <path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div class="list-section">
@@ -115,47 +212,6 @@
             </label>
             <ul class="robot-list" id="robot-list" role="listbox" aria-label="Lista de separadores"></ul>
           </div>
-
-          <details class="disclosure disclosure--new" id="new-robot-disclosure">
-            <summary class="disclosure__summary">
-              <span class="disclosure__summary-text">Novo separador</span>
-              <span class="disclosure__chevron" aria-hidden="true"></span>
-            </summary>
-            <div class="disclosure__body">
-              <p class="disclosure__lede">
-                Identificação única, nome e localização. Não é necessário o robô estar online para cadastrar.
-              </p>
-              <form id="form-new-robot" class="form-stack form-stack--new">
-                <label class="field">
-                  <span class="field__label">Código (identificação única)</span>
-                  <input type="text" id="new-code" name="code" required maxlength="32" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Nome</span>
-                  <input type="text" id="new-name" name="name" required maxlength="128" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Localização</span>
-                  <input
-                    type="text"
-                    id="new-location"
-                    name="location"
-                    maxlength="256"
-                    placeholder="Ex.: Centro cirúrgico — Ala B"
-                  />
-                </label>
-                <label class="field">
-                  <span class="field__label">Modelo <span class="field__optional">(opcional)</span></span>
-                  <input type="text" id="new-model" name="model" maxlength="128" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Capacidade nominal (un/h)</span>
-                  <input type="number" id="new-throughput" name="max_units_per_hour" min="1" max="100000" value="500" />
-                </label>
-                <button type="submit" class="btn btn--primary btn--block btn--glow" id="btn-new-robot">Cadastrar separador</button>
-              </form>
-            </div>
-          </details>
         </aside>
 
         <section class="panel panel--detail" id="detail-panel" aria-live="polite">
@@ -187,43 +243,172 @@
                 <dd id="robot-detail-client">—</dd>
               </div>
             </dl>
-            <section class="robot-detail__medicines-block" id="robot-detail-medicines-block" hidden>
-              <h3 class="robot-detail__subsection-title">Remédios a separar</h3>
-              <ul class="robot-detail__medicine-list" id="robot-detail-medicines" aria-label="Lista de medicamentos"></ul>
-              <p class="robot-detail__medicine-empty" id="robot-detail-medicines-empty" hidden>
-                Nenhum medicamento cadastrado nesta ordem.
-              </p>
-            </section>
+            <div class="robot-detail__actions" id="robot-detail-actions" hidden>
+              <button
+                type="button"
+                class="btn btn--secondary btn--small"
+                id="btn-pausar-os"
+                hidden
+                title="Interrompe temporariamente o cronômetro e a separação"
+              >
+                Pausar
+              </button>
+              <button
+                type="button"
+                class="btn btn--secondary btn--small"
+                id="btn-retomar-os"
+                hidden
+                title="Continua a separação a partir do ponto em que parou"
+              >
+                Retomar
+              </button>
+              <button
+                type="button"
+                class="btn btn--ghost btn--small btn--cancel-os"
+                id="btn-cancelar-os"
+                hidden
+                title="Interrompe a separação e devolve a OS para a fila"
+              >
+                Cancelar OS
+              </button>
+            </div>
             <div class="robot-detail__metrics">
               <div class="metric-box metric-box--progress">
                 <span class="metric-box__label">Remédios separados / total</span>
                 <p class="metric-box__value metric-box__value--elapsed" id="robot-detail-units">—</p>
-                <span class="metric-box__hint">unidades</span>
+                <span class="metric-box__hint">unidades nesta OS</span>
               </div>
               <div class="metric-box metric-box--time">
                 <span class="metric-box__label">Tempo desde o início</span>
                 <p class="metric-box__value metric-box__value--elapsed" id="robot-detail-elapsed">—</p>
                 <span class="metric-box__sublabel" id="robot-detail-start">—</span>
               </div>
-            </div>
-            <div class="robot-detail__camera-wrap">
-              <label class="field robot-detail__camera">
-                <span class="field__label">Captura (câmera)</span>
-                <input
-                  type="file"
-                  id="robot-detail-camera"
-                  name="camera_capture"
-                  accept="image/*"
-                  capture="environment"
-                  aria-describedby="robot-detail-camera-hint"
-                />
-                <span class="robot-detail__camera-hint" id="robot-detail-camera-hint">
-                  No celular ou tablet, o sistema pode abrir a câmera para registrar a separação. No desktop, você pode
-                  escolher um arquivo de imagem.
-                </span>
-              </label>
+              <div class="metric-box metric-box--progress">
+                <span class="metric-box__label">Tempo médio por medicamento</span>
+                <p class="metric-box__value metric-box__value--elapsed" id="robot-detail-avg-per-med">—</p>
+                <span class="metric-box__hint">ritmo atual (esta OS)</span>
+              </div>
+              <div class="metric-box metric-box--time">
+                <span class="metric-box__label">Projeção tempo total da OS</span>
+                <p class="metric-box__value metric-box__value--elapsed" id="robot-detail-os-projection">—</p>
+                <span class="metric-box__hint">se mantiver o ritmo atual</span>
+              </div>
             </div>
           </article>
+        </section>
+        </div>
+        </div>
+
+        <section
+          class="panel panel--historico view-panel hidden"
+          id="view-historico"
+          role="tabpanel"
+          aria-labelledby="tab-historico"
+        >
+          <div class="historico-head">
+            <h2 class="panel__title historico-title">Histórico por separador</h2>
+            <p class="historico-lede">
+              Escolha o separador e o intervalo de datas para ver OS concluídas, canceladas, com pausa,
+              unidades empacotadas e outros indicadores.
+            </p>
+          </div>
+          <form id="form-historico" class="historico-form">
+            <label class="field">
+              <span class="field__label">Separador</span>
+              <select id="historico-robot" name="robot_id" required aria-describedby="historico-robot-hint">
+                <option value="">Selecione…</option>
+              </select>
+              <span class="field__hint" id="historico-robot-hint"
+                >O mesmo da lista à esquerda em Operação, ou escolha outro aqui.</span
+              >
+            </label>
+            <label class="field">
+              <span class="field__label">Data inicial</span>
+              <input type="date" id="historico-de" name="de" required />
+            </label>
+            <label class="field">
+              <span class="field__label">Data final</span>
+              <input type="date" id="historico-ate" name="ate" required />
+            </label>
+            <div class="historico-form__actions">
+              <button type="submit" class="btn btn--primary" id="btn-historico-consultar">Consultar</button>
+            </div>
+          </form>
+          <div id="historico-result" class="historico-result" aria-live="polite"></div>
+        </section>
+
+        <section
+          class="panel panel--logs view-panel hidden"
+          id="view-logs"
+          role="tabpanel"
+          aria-labelledby="tab-logs"
+        >
+          <div class="logs-head">
+            <div class="logs-head__text">
+              <h2 class="panel__title historico-title">Logs de auditoria</h2>
+              <p class="logs-head__lede">
+                Registros de ações no sistema. Limpar remove todas as linhas do banco de dados
+              </p>
+            </div>
+            <div class="logs-head__actions">
+              <button type="button" class="btn btn--ghost btn--small" id="btn-logs-refresh">Atualizar</button>
+              <button type="button" class="btn btn--danger btn--small" id="btn-logs-clear">
+                Limpar logs
+              </button>
+            </div>
+          </div>
+          <form id="form-logs-filter" class="logs-filter" aria-label="Filtros dos logs de auditoria">
+            <label class="field logs-filter__field">
+              <span class="field__label">Usuário</span>
+              <input
+                type="search"
+                id="logs-filter-username"
+                name="username"
+                maxlength="64"
+                placeholder="Contém no nome…"
+                autocomplete="off"
+              />
+            </label>
+            <label class="field logs-filter__field">
+              <span class="field__label">Categoria</span>
+              <select id="logs-filter-category" name="category" aria-describedby="logs-filter-hint">
+                <option value="">Todas</option>
+                <option value="historico">Histórico (consulta por separador)</option>
+                <option value="cancelamento">Cancelamento de OS</option>
+                <option value="pausa">Pausa</option>
+                <option value="retomada">Retomada</option>
+                <option value="conclusao">Conclusão de OS (manual ou automática)</option>
+                <option value="inicio_os">Início de OS</option>
+                <option value="os_todas">Todas as ações de OS</option>
+                <option value="sessao">Login / logout</option>
+                <option value="admin">Painel (abrir lista de logs)</option>
+              </select>
+            </label>
+            <label class="field logs-filter__field">
+              <span class="field__label">Data inicial</span>
+              <input type="date" id="logs-filter-de" name="de" autocomplete="off" />
+            </label>
+            <label class="field logs-filter__field">
+              <span class="field__label">Data final</span>
+              <input type="date" id="logs-filter-ate" name="ate" autocomplete="off" />
+            </label>
+            <label class="field logs-filter__field">
+              <span class="field__label">Por página</span>
+              <select id="logs-per-page" name="per_page" aria-describedby="logs-filter-hint">
+                <option value="20">20</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+            <div class="logs-filter__actions">
+              <button type="submit" class="btn btn--primary btn--small" id="btn-logs-filter">Filtrar</button>
+              <button type="button" class="btn btn--ghost btn--small" id="btn-logs-filter-clear">Limpar filtros</button>
+            </div>
+            <p class="logs-filter__hint" id="logs-filter-hint">
+              Intervalo pela data/hora do registro (UTC). Escolha quantos registros listar por vez (20, 50 ou 100); com mais páginas, use Anterior/Próxima abaixo da tabela.
+            </p>
+          </form>
+          <div id="logs-result" class="logs-result" aria-live="polite"></div>
         </section>
       </div>
 
@@ -269,6 +454,39 @@
 
     <div
       class="modal"
+      id="clear-logs-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="clear-logs-modal-title"
+      aria-describedby="clear-logs-modal-desc"
+    >
+      <button type="button" class="modal__backdrop" data-clear-logs-modal-dismiss aria-label="Fechar"></button>
+      <div class="modal__panel">
+        <div class="modal__icon-wrap" aria-hidden="true">
+          <svg class="modal__icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24">
+            <path
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M10 11v6M14 11v6"
+            />
+          </svg>
+        </div>
+        <h2 id="clear-logs-modal-title" class="modal__title">Limpar logs de auditoria?</h2>
+        <p class="modal__text" id="clear-logs-modal-desc">
+          Todos os registros serão apagados permanentemente do banco de dados. Esta ação não pode ser desfeita.
+        </p>
+        <div class="modal__actions">
+          <button type="button" class="btn btn--ghost" id="clear-logs-modal-cancel">Cancelar</button>
+          <button type="button" class="btn btn--danger" id="clear-logs-modal-confirm">Limpar tudo</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal"
       id="edit-robot-modal"
       hidden
       role="dialog"
@@ -307,6 +525,21 @@
             <span class="field__label">Modelo</span>
             <input type="text" id="edit-model" name="model" maxlength="128" />
           </label>
+          <div class="field" id="edit-status-field">
+            <label class="field__label" for="edit-status">Status operacional</label>
+            <select id="edit-status" name="status" aria-describedby="edit-status-hint">
+              <option value="offline">Offline (sem conexão)</option>
+              <option value="idle">Ocioso (online — pronto)</option>
+              <option value="maintenance">Manutenção</option>
+              <option value="error">Erro</option>
+            </select>
+            <p class="modal__hint" id="edit-status-hint">
+              Use <strong>Ocioso</strong> para colocar o separador “online” para testes. Durante uma OS em execução o status não pode ser alterado aqui.
+            </p>
+            <p class="modal__hint modal__hint--warn" id="edit-status-locked" hidden>
+              Este separador está <strong>em execução</strong>. Conclua ou cancele a OS para alterar o status.
+            </p>
+          </div>
           <div class="modal__actions modal__actions--form">
             <button type="button" class="btn btn--ghost" id="edit-modal-cancel">Cancelar</button>
             <button type="submit" class="btn btn--primary" id="edit-modal-save">Salvar</button>
@@ -315,6 +548,125 @@
       </div>
     </div>
 
+    <div
+      class="modal"
+      id="new-robot-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-robot-modal-title"
+      aria-describedby="new-robot-modal-desc"
+    >
+      <button type="button" class="modal__backdrop" data-new-robot-modal-dismiss aria-label="Fechar"></button>
+      <div class="modal__panel modal__panel--form">
+        <div class="modal__icon-wrap modal__icon-wrap--add" aria-hidden="true">
+          <svg class="modal__icon" xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24">
+            <path
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              d="M12 5v14M5 12h14"
+            />
+          </svg>
+        </div>
+        <h2 id="new-robot-modal-title" class="modal__title">Novo separador</h2>
+        <p id="new-robot-modal-desc" class="modal__text modal__text--lede">
+          Identificação única, nome e localização. Não é necessário o equipamento estar online para cadastrar.
+        </p>
+        <form id="form-new-robot" class="form-stack modal__form">
+          <label class="field">
+            <span class="field__label">Código (identificação única)</span>
+            <input type="text" id="new-code" name="code" required maxlength="32" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span class="field__label">Nome</span>
+            <input type="text" id="new-name" name="name" required maxlength="128" />
+          </label>
+          <label class="field">
+            <span class="field__label">Localização</span>
+            <input
+              type="text"
+              id="new-location"
+              name="location"
+              maxlength="256"
+              placeholder="Ex.: Centro cirúrgico — Ala B"
+            />
+          </label>
+          <label class="field">
+            <span class="field__label">Modelo <span class="field__optional">(opcional)</span></span>
+            <input type="text" id="new-model" name="model" maxlength="128" />
+          </label>
+          <div class="modal__actions modal__actions--form">
+            <button type="button" class="btn btn--ghost" id="new-robot-modal-cancel">Cancelar</button>
+            <button type="submit" class="btn btn--primary" id="btn-new-robot">Cadastrar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
+      class="modal"
+      id="manual-os-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="manual-os-modal-title"
+      aria-describedby="manual-os-modal-desc"
+    >
+      <button type="button" class="modal__backdrop" data-manual-os-modal-dismiss aria-label="Fechar"></button>
+      <div class="modal__panel modal__panel--form">
+        <div class="modal__icon-wrap modal__icon-wrap--add" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24">
+            <path
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"
+            />
+            <path stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+          </svg>
+        </div>
+        <h2 id="manual-os-modal-title" class="modal__title">Nova OS manual (teste)</h2>
+        <p id="manual-os-modal-desc" class="modal__text modal__text--lede">
+          Crie uma ordem com número, cliente e quantidade de remédios; escolha o separador
+          <strong>ocioso (idle)</strong>. Opcional: simular 1 unidade a cada 3 segundos.
+        </p>
+        <form id="form-manual-os" class="form-stack modal__form">
+          <label class="field">
+            <span class="field__label">Número da OS</span>
+            <input type="text" id="manual-os-code" name="os_code" required maxlength="64" placeholder="Ex.: OS-TESTE-001" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span class="field__label">Cliente</span>
+            <input type="text" id="manual-os-client" name="client_name" maxlength="256" placeholder="Nome do cliente" />
+          </label>
+          <label class="field">
+            <span class="field__label">Separador</span>
+            <select id="manual-os-robot" name="robot_id" required aria-describedby="manual-os-robot-hint">
+              <option value="">Selecione…</option>
+            </select>
+            <span class="field__hint" id="manual-os-robot-hint"
+              >O separador deve estar <strong>online</strong> e <strong>sem OS</strong> (ocioso).</span
+            >
+          </label>
+          <label class="field">
+            <span class="field__label">Quantidade de remédios (unidades)</span>
+            <input type="number" id="manual-os-qty" name="quantidade_remedios" min="1" max="500" value="5" required />
+          </label>
+          <label class="field field--checkbox">
+            <input type="checkbox" id="manual-os-simulate" name="simular" checked />
+            <span class="field__label field__label--inline">Simular separação (1 unidade a cada 3 s)</span>
+          </label>
+          <div class="modal__actions modal__actions--form">
+            <button type="button" class="btn btn--ghost" id="manual-os-modal-cancel">Cancelar</button>
+            <button type="submit" class="btn btn--primary" id="btn-manual-os-submit">Criar e enviar OS</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="/vendor/chart.js/chart.umd.min.js" defer></script>
     <script src="/app.js" defer></script>
   </body>
 </html>

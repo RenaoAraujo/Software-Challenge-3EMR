@@ -24,6 +24,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8000,http://localhost:8000"
     )
     environment: str = "development"
+    # Primeiro usuário criado quando a tabela `users` está vazia (sobreponha com EMR_* em produção).
+    auth_default_username: str = "teste"
+    auth_default_password: str = "123456"
+    # Conta de administrador (criada/atualizada na subida; acesso à aba Logs).
+    admin_username: str = "admin"
+    admin_password: str = "admin123"
 
     @property
     def cors_origin_list(self) -> list[str]:

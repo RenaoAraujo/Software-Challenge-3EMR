@@ -17,6 +17,13 @@ class RobotSummary(BaseModel):
     status: str
     online: bool = Field(description="Indicador simplificado: disponível (online) ou não (offline).")
     current_os_code: str | None = None
+    units_separated: int = Field(default=0, description="Unidades já separadas na OS atual (0 se ocioso).")
+    expected_units: int | None = Field(default=None, description="Meta da OS atual, se houver.")
+    client_name: str | None = Field(default=None, description="Cliente da OS atual, se houver.")
+    elapsed_seconds: int | None = Field(
+        default=None,
+        description="Tempo efetivo da OS em andamento ou pausada; null se não houver OS ativa.",
+    )
 
 
 class ServiceOrderBrief(BaseModel):

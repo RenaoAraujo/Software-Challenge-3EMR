@@ -17,6 +17,10 @@ def apply_sqlite_migrations(conn: Connection) -> None:
         conn.execute(
             text("ALTER TABLE robots ADD COLUMN location VARCHAR(256) NOT NULL DEFAULT ''")
         )
+    if "paused_at" not in col_names:
+        conn.execute(text("ALTER TABLE robots ADD COLUMN paused_at DATETIME"))
+    if "elapsed_pause_seconds" not in col_names:
+        conn.execute(text("ALTER TABLE robots ADD COLUMN elapsed_pause_seconds INTEGER NOT NULL DEFAULT 0"))
 
     so_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(service_orders)")).fetchall()}
     if "client_name" not in so_cols:
@@ -25,3 +29,21 @@ def apply_sqlite_migrations(conn: Connection) -> None:
         )
     if "medicines_json" not in so_cols:
         conn.execute(text("ALTER TABLE service_orders ADD COLUMN medicines_json TEXT NOT NULL DEFAULT '[]'"))
+    if "completed_at" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN completed_at DATETIME"))
+    if "completed_by_robot_id" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN completed_by_robot_id INTEGER"))
+    if "completed_units" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN completed_units INTEGER"))
+    if "assigned_at" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN assigned_at DATETIME"))
+    if "pause_count" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN pause_count INTEGER NOT NULL DEFAULT 0"))
+    if "cancelled_at" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_at DATETIME"))
+    if "cancelled_by_robot_id" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_by_robot_id INTEGER"))
+
+    user_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(users)")).fetchall()}
+    if "is_admin" not in user_cols:
+        conn.execute(text("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0"))

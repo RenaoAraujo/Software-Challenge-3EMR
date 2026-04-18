@@ -4,9 +4,15 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.router import api_router
-from app.bootstrap.seed import seed_if_empty
+from app.bootstrap.seed import (
+    ensure_admin_user,
+    ensure_common_test_user,
+    seed_default_user,
+    seed_if_empty,
+)
 from app.bootstrap.sqlite_migrations import apply_sqlite_migrations
 from app.config import settings
 from app.database import SessionLocal, engine
@@ -22,6 +28,9 @@ async def lifespan(_: FastAPI):
     db = SessionLocal()
     try:
         seed_if_empty(db)
+        seed_default_user(db)
+        ensure_common_test_user(db)
+        ensure_admin_user(db)
     finally:
         db.close()
     yield
@@ -41,6 +50,13 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
+    )
+    application.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        max_age=14 * 24 * 3600,
+        same_site="lax",
+        https_only=False,
     )
     application.include_router(api_router, prefix="/api")
 

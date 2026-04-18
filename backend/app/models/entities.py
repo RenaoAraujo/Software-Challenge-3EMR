@@ -4,7 +4,7 @@ import enum
 import json
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -16,13 +16,14 @@ class RobotStatus(str, enum.Enum):
     OFFLINE = "offline"
     IDLE = "idle"
     RUNNING = "running"
+    PAUSED = "paused"
     ERROR = "error"
     MAINTENANCE = "maintenance"
 
 
 def is_robot_online(status: str) -> bool:
-    """Online: ocioso ou em operação. Offline: sem conexão, manutenção ou erro."""
-    return status in (RobotStatus.IDLE.value, RobotStatus.RUNNING.value)
+    """Online: ocioso, em operação ou pausado. Offline: sem conexão, manutenção ou erro."""
+    return status in (RobotStatus.IDLE.value, RobotStatus.RUNNING.value, RobotStatus.PAUSED.value)
 
 
 class ServiceOrderStatus(str, enum.Enum):
@@ -46,6 +47,8 @@ class Robot(Base):
 
     current_order_id: Mapped[int | None] = mapped_column(ForeignKey("service_orders.id"), nullable=True)
     job_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    elapsed_pause_seconds: Mapped[int] = mapped_column(Integer, default=0)
     units_separated: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -72,6 +75,24 @@ class ServiceOrder(Base):
     status: Mapped[str] = mapped_column(String(32), default=ServiceOrderStatus.PENDING.value)
     medicines_json: Mapped[str] = mapped_column(Text, default="[]")
 
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    completed_by_robot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("robots.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    completed_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pause_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    cancelled_by_robot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("robots.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -86,3 +107,34 @@ class ServiceOrder(Base):
             return [str(x).strip() for x in data if str(x).strip()]
         except json.JSONDecodeError:
             return []
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    username: Mapped[str] = mapped_column(String(64), index=True)
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
