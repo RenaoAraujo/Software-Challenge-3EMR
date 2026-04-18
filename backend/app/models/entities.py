@@ -82,6 +82,8 @@ class ServiceOrder(Base):
         nullable=True,
         index=True,
     )
+    # Nome do separador na conclusão; permanece no histórico se o robô for excluído (FK zera só o id).
+    completed_by_robot_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     completed_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pause_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cancelled_at: Mapped[datetime | None] = mapped_column(
@@ -92,6 +94,7 @@ class ServiceOrder(Base):
         nullable=True,
         index=True,
     )
+    cancelled_by_robot_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

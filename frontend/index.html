@@ -48,6 +48,60 @@
           <button type="button" class="btn btn--ghost btn--small" id="btn-logout" title="Sair" aria-label="Sair da conta">
             Sair
           </button>
+          <div class="header-notif" id="header-notif">
+            <button
+              type="button"
+              class="header-notif__btn"
+              id="btn-notifications"
+              title="Conclusões de OS"
+              aria-label="Notificações — ordens de serviço concluídas"
+              aria-expanded="false"
+              aria-haspopup="true"
+              aria-controls="notif-panel"
+            >
+              <svg
+                class="header-notif__icon"
+                xmlns="http://www.w3.org/2000/svg"
+                width="22"
+                height="22"
+                fill="none"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  stroke="currentColor"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M14.5 18a2.5 2.5 0 1 1-5 0M12 4a5 5 0 0 0-5 5v2.5c0 .6-.2 1.2-.6 1.7L5 15h14l-1.4-1.8c-.4-.5-.6-1.1-.6-1.7V9a5 5 0 0 0-5-5Z"
+                />
+              </svg>
+              <span class="header-notif__badge" id="notif-badge" hidden aria-hidden="true">0</span>
+            </button>
+            <div
+              class="header-notif__panel"
+              id="notif-panel"
+              role="region"
+              aria-label="Conclusões recentes de ordens de serviço"
+              hidden
+            >
+              <div class="header-notif__toolbar">
+                <p class="header-notif__title">OS concluídas</p>
+                <button
+                  type="button"
+                  class="header-notif__clear"
+                  id="btn-notif-clear"
+                  title="Remover todas da lista"
+                  aria-label="Excluir notificações da lista"
+                  disabled
+                >
+                  Excluir
+                </button>
+              </div>
+              <p class="header-notif__empty" id="notif-empty">Carregando…</p>
+              <ul class="header-notif__list" id="notif-list" hidden></ul>
+            </div>
+          </div>
           <button
             type="button"
             class="theme-toggle"
@@ -89,6 +143,33 @@
               />
             </svg>
           </button>
+          <button
+            type="button"
+            class="profile-btn"
+            id="btn-profile"
+            title="Perfil e conta"
+            aria-label="Abrir perfil e configurações da conta"
+            aria-expanded="false"
+            aria-controls="profile-drawer"
+          >
+            <svg
+              class="profile-btn__icon"
+              xmlns="http://www.w3.org/2000/svg"
+              width="22"
+              height="22"
+              fill="none"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M20 21a8 8 0 1 0-16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
+              />
+            </svg>
+          </button>
           <span class="badge badge--neutral" id="conn-status" role="status">Verificando…</span>
         </div>
       </header>
@@ -114,6 +195,16 @@
             aria-selected="false"
           >
             Histórico
+          </button>
+          <button
+            type="button"
+            class="app-nav__tab"
+            id="tab-relatorio"
+            data-view="relatorio"
+            aria-controls="view-relatorio"
+            aria-selected="false"
+          >
+            Relatório
           </button>
           <button
             type="button"
@@ -338,6 +429,147 @@
         </section>
 
         <section
+          class="panel panel--relatorio view-panel hidden"
+          id="view-relatorio"
+          role="tabpanel"
+          aria-labelledby="tab-relatorio"
+        >
+          <div class="historico-head">
+            <h2 class="panel__title historico-title">Relatório</h2>
+            <p class="historico-lede">
+              Escolha o tipo de relatório: detalhamento por ordem de serviço ou visão consolidada por separador.
+            </p>
+          </div>
+          <div class="relatorio-subtabs" role="tablist" aria-label="Tipo de relatório">
+            <button
+              type="button"
+              class="relatorio-subtab relatorio-subtab--active"
+              id="relatorio-tab-os"
+              role="tab"
+              aria-selected="true"
+              aria-controls="relatorio-panel-os"
+              data-relatorio-subtab="os"
+            >
+              Por OS
+            </button>
+            <button
+              type="button"
+              class="relatorio-subtab"
+              id="relatorio-tab-separador"
+              role="tab"
+              aria-selected="false"
+              aria-controls="relatorio-panel-separador"
+              tabindex="-1"
+              data-relatorio-subtab="separador"
+            >
+              Por Separador
+            </button>
+          </div>
+          <div
+            class="relatorio-tabpanel"
+            id="relatorio-panel-os"
+            role="tabpanel"
+            aria-labelledby="relatorio-tab-os"
+          >
+            <p class="historico-lede relatorio-os-lede">
+              Ordens encerradas (concluídas ou canceladas). Opcional: restrinja por intervalo de datas (evento no calendário
+              de Brasília).
+            </p>
+            <form id="form-relatorio-os" class="historico-form relatorio-os-form" aria-label="Filtro do relatório por OS">
+              <div class="relatorio-os-toolbar">
+                <div class="relatorio-os-filters-grid">
+                  <label class="field">
+                    <span class="field__label">Data inicial</span>
+                    <input type="date" id="relatorio-os-de" name="de" />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Data final</span>
+                    <input type="date" id="relatorio-os-ate" name="ate" />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">OS (código)</span>
+                    <input type="search" id="relatorio-os-filtro-os" name="os" maxlength="64" autocomplete="off" placeholder="Contém…" />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Nome</span>
+                    <input type="search" id="relatorio-os-nome" name="nome" maxlength="128" autocomplete="off" placeholder="Parte do nome do cliente" />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Cliente</span>
+                    <input type="search" id="relatorio-os-cliente" name="cliente" maxlength="256" autocomplete="off" placeholder="Outro trecho do cliente" />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Situação</span>
+                    <select id="relatorio-os-situacao" name="situacao" aria-label="Filtrar por situação">
+                      <option value="">Todas</option>
+                      <option value="concluida">Concluída</option>
+                      <option value="cancelada">Cancelada</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Separador (nome)</span>
+                    <input
+                      type="search"
+                      id="relatorio-os-nome-separador"
+                      name="nome_separador"
+                      maxlength="128"
+                      autocomplete="off"
+                      placeholder="Nome do robô"
+                    />
+                  </label>
+                  <label class="field">
+                    <span class="field__label">Separador (código)</span>
+                    <input
+                      type="search"
+                      id="relatorio-os-codigo-separador"
+                      name="codigo_separador"
+                      maxlength="32"
+                      autocomplete="off"
+                      placeholder="Código do robô"
+                    />
+                  </label>
+                </div>
+                <div class="relatorio-os-toolbar__actions">
+                  <button type="button" class="btn btn--ghost" id="btn-relatorio-os-limpar">Limpar filtros</button>
+                  <button type="submit" class="btn btn--primary" id="btn-relatorio-os-consultar">Consultar</button>
+                </div>
+              </div>
+              <p class="field__hint" id="relatorio-os-dates-hint">
+                Datas em branco = todo o histórico. Nome e Cliente no cliente: basta um dos campos coincidir (OU). Os demais
+                filtros combinam com E.
+              </p>
+            </form>
+            <div id="relatorio-os-result" class="relatorio-os-result" aria-live="polite"></div>
+          </div>
+          <div
+            class="relatorio-tabpanel hidden"
+            id="relatorio-panel-separador"
+            role="tabpanel"
+            aria-labelledby="relatorio-tab-separador"
+            hidden
+          >
+            <p class="historico-lede relatorio-os-lede">
+              Separadores cadastrados no sistema. Para indicadores por período, use o <strong>Histórico</strong> com o
+              separador desejado.
+            </p>
+            <div class="relatorio-separador-toolbar">
+              <label class="field relatorio-separador-toolbar__field">
+                <span class="field__label">Buscar por nome</span>
+                <input
+                  type="search"
+                  id="relatorio-separador-busca"
+                  maxlength="128"
+                  autocomplete="off"
+                  placeholder="Nome do separador"
+                  aria-label="Filtrar lista por nome do separador"
+                />
+              </label>
+            </div>
+            <div id="relatorio-separador-result" class="relatorio-separador-result" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <section
           class="panel panel--logs view-panel hidden"
           id="view-logs"
           role="tabpanel"
@@ -381,7 +613,7 @@
                 <option value="inicio_os">Início de OS</option>
                 <option value="os_todas">Todas as ações de OS</option>
                 <option value="sessao">Login / logout</option>
-                <option value="admin">Painel (abrir lista de logs)</option>
+                <option value="contas">Contas (senha, cadastro, promover admin)</option>
               </select>
             </label>
             <label class="field logs-filter__field">
@@ -665,6 +897,184 @@
         </form>
       </div>
     </div>
+
+    <div id="profile-drawer-backdrop" class="profile-drawer-backdrop" hidden aria-hidden="true"></div>
+    <aside
+      id="profile-drawer"
+      class="profile-drawer"
+      hidden
+      aria-hidden="true"
+      aria-labelledby="profile-drawer-title"
+    >
+      <div class="profile-drawer__inner">
+        <div class="profile-drawer__head">
+          <h2 id="profile-drawer-title" class="profile-drawer__title">Perfil</h2>
+          <button type="button" class="profile-drawer__close" id="profile-drawer-close" aria-label="Fechar painel de perfil">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <div class="profile-drawer__content">
+          <div
+            class="profile-drawer__tabs"
+            id="profile-drawer-tabs"
+            role="tablist"
+            aria-label="Escolher ação no perfil"
+          >
+            <button
+              type="button"
+              class="profile-drawer__tab profile-drawer__tab--active"
+              id="profile-tab-own"
+              role="tab"
+              aria-selected="true"
+              aria-controls="profile-panel-own"
+              data-profile-view="own"
+            >
+              Minha senha
+            </button>
+            <button
+              type="button"
+              class="profile-drawer__tab hidden"
+              id="profile-tab-user"
+              role="tab"
+              aria-selected="false"
+              aria-controls="profile-panel-user"
+              data-profile-view="user"
+              tabindex="-1"
+            >
+              Usuário / admin
+            </button>
+            <button
+              type="button"
+              class="profile-drawer__tab hidden"
+              id="profile-tab-new"
+              role="tab"
+              aria-selected="false"
+              aria-controls="profile-panel-new"
+              data-profile-view="new"
+              tabindex="-1"
+            >
+              Criar novo
+            </button>
+          </div>
+
+          <div
+            class="profile-drawer__panel"
+            id="profile-panel-own"
+            role="tabpanel"
+            aria-labelledby="profile-tab-own"
+          >
+            <section class="profile-drawer__section">
+              <p class="profile-drawer__muted">Usuário</p>
+              <p class="profile-drawer__strong" id="profile-username-display">—</p>
+              <p class="profile-drawer__hint">
+                Por segurança a senha não é exibida. Use os campos abaixo para alterá-la.
+              </p>
+              <form id="form-profile-own-pwd" class="form-stack profile-drawer__form">
+                <label class="field">
+                  <span class="field__label">Senha atual</span>
+                  <input
+                    type="password"
+                    id="profile-own-current"
+                    name="current"
+                    autocomplete="current-password"
+                    required
+                    maxlength="256"
+                  />
+                </label>
+                <label class="field">
+                  <span class="field__label">Nova senha (mín. 6 caracteres)</span>
+                  <input
+                    type="password"
+                    id="profile-own-new"
+                    name="new"
+                    autocomplete="new-password"
+                    required
+                    minlength="6"
+                    maxlength="256"
+                  />
+                </label>
+                <label class="field">
+                  <span class="field__label">Confirmar nova senha</span>
+                  <input
+                    type="password"
+                    id="profile-own-new2"
+                    name="new2"
+                    autocomplete="new-password"
+                    required
+                    minlength="6"
+                    maxlength="256"
+                  />
+                </label>
+                <button type="submit" class="btn btn--primary btn--small" id="btn-profile-own-submit">Alterar minha senha</button>
+              </form>
+            </section>
+          </div>
+
+          <div
+            class="profile-drawer__panel hidden"
+            id="profile-panel-user"
+            role="tabpanel"
+            aria-labelledby="profile-tab-user"
+            hidden
+          >
+            <section class="profile-drawer__section">
+              <h3 class="profile-drawer__h3">Promover ou alterar outro usuário</h3>
+              <p class="profile-drawer__hint">Escolha o usuário, defina nova senha (opcional) e se é administrador.</p>
+              <label class="field">
+                <span class="field__label">Usuário</span>
+                <select id="profile-user-select" aria-describedby="profile-user-hint"></select>
+                <span class="field__hint" id="profile-user-hint">Marque administrador para promover; desmarque para remover o perfil admin (se permitido).</span>
+              </label>
+              <form id="form-profile-target" class="form-stack profile-drawer__form">
+                <label class="field">
+                  <span class="field__label">Nova senha (opcional)</span>
+                  <input
+                    type="password"
+                    id="profile-target-pwd"
+                    autocomplete="new-password"
+                    maxlength="256"
+                    placeholder="Deixe em branco para não alterar"
+                  />
+                </label>
+                <label class="field field--checkbox">
+                  <input type="checkbox" id="profile-target-admin" />
+                  <span class="field__label field__label--inline">Administrador</span>
+                </label>
+                <button type="submit" class="btn btn--secondary btn--small" id="btn-profile-target-save">Salvar neste usuário</button>
+              </form>
+            </section>
+          </div>
+
+          <div
+            class="profile-drawer__panel hidden"
+            id="profile-panel-new"
+            role="tabpanel"
+            aria-labelledby="profile-tab-new"
+            hidden
+          >
+            <section class="profile-drawer__section">
+              <h3 class="profile-drawer__h3">Novo usuário</h3>
+              <p class="profile-drawer__hint">Cadastre login e senha inicial.</p>
+              <form id="form-profile-new-user" class="form-stack profile-drawer__form">
+                <label class="field">
+                  <span class="field__label">Nome de usuário</span>
+                  <input type="text" id="profile-new-username" maxlength="64" autocomplete="off" required />
+                </label>
+                <label class="field">
+                  <span class="field__label">Senha inicial</span>
+                  <input type="password" id="profile-new-pwd" minlength="6" maxlength="256" autocomplete="new-password" required />
+                </label>
+                <label class="field field--checkbox">
+                  <input type="checkbox" id="profile-new-admin" />
+                  <span class="field__label field__label--inline">Administrador</span>
+                </label>
+                <button type="submit" class="btn btn--primary btn--small" id="btn-profile-new-user-submit">Adicionar usuário</button>
+              </form>
+            </section>
+          </div>
+        </div>
+      </div>
+    </aside>
 
     <script src="/vendor/chart.js/chart.umd.min.js" defer></script>
     <script src="/app.js" defer></script>

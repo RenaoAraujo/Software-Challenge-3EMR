@@ -11,14 +11,21 @@ from app.models.entities import AuditLog
 
 # Grupos de `action` para filtro por “área” (histórico, cancelamento, pausa, etc.)
 AUDIT_CATEGORY_ACTIONS: dict[str, tuple[str, ...]] = {
-    "historico": ("view_historico",),
+    "historico": ("view_historico", "view_relatorio_os"),
     "cancelamento": ("os_cancelled",),
     "pausa": ("os_paused",),
     "retomada": ("os_resumed",),
     "conclusao": ("os_completed", "os_completed_auto"),
     "inicio_os": ("os_started",),
     "sessao": ("login", "logout"),
-    "admin": ("view_logs",),
+    "contas": (
+        "password_changed_self",
+        "password_changed_by_admin",
+        "user_created",
+        "user_promoted_admin",
+        "user_demoted_admin",
+        "user_updated_by_admin",
+    ),
     "os_todas": (
         "os_started",
         "os_completed",

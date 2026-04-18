@@ -102,6 +102,7 @@ class RobotService:
         order.status = ServiceOrderStatus.COMPLETED.value
         order.completed_at = now
         order.completed_by_robot_id = robot.id
+        order.completed_by_robot_name = (robot.name or "").strip() or None
         order.completed_units = max(0, int(robot.units_separated))
         robot.current_order_id = None
         robot.job_started_at = None
@@ -173,9 +174,11 @@ class RobotService:
             order.status = ServiceOrderStatus.CANCELLED.value
             order.cancelled_at = now
             order.cancelled_by_robot_id = robot_id
+            order.cancelled_by_robot_name = (robot.name or "").strip() or None
             order.assigned_at = None
             order.completed_at = None
             order.completed_by_robot_id = None
+            order.completed_by_robot_name = None
             order.completed_units = None
             self._db.add(order)
         robot.current_order_id = None

@@ -43,6 +43,10 @@ def apply_sqlite_migrations(conn: Connection) -> None:
         conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_at DATETIME"))
     if "cancelled_by_robot_id" not in so_cols:
         conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_by_robot_id INTEGER"))
+    if "completed_by_robot_name" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN completed_by_robot_name VARCHAR(128)"))
+    if "cancelled_by_robot_name" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_by_robot_name VARCHAR(128)"))
 
     user_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(users)")).fetchall()}
     if "is_admin" not in user_cols:

@@ -18,6 +18,17 @@ def require_auth(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Autenticação necessária.")
 
 
+def get_current_user(request: Request, db: Session = Depends(get_database)) -> User:
+    raw = request.session.get("user")
+    if not raw or raw.get("id") is None:
+        raise HTTPException(status_code=401, detail="Autenticação necessária.")
+    user = db.get(User, int(raw["id"]))
+    if user is None:
+        request.session.clear()
+        raise HTTPException(status_code=401, detail="Sessão inválida.")
+    return user
+
+
 def require_admin(request: Request, db: Session = Depends(get_database)) -> User:
     raw = request.session.get("user")
     if not raw or raw.get("id") is None:

@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
@@ -33,3 +35,10 @@ class RobotRepository:
         if exclude_id is not None:
             stmt = stmt.where(Robot.id != exclude_id)
         return self._db.scalars(stmt).first()
+
+    def get_names_by_ids(self, ids: Iterable[int]) -> dict[int, str]:
+        id_list = list({i for i in ids if i is not None})
+        if not id_list:
+            return {}
+        stmt = select(Robot.id, Robot.name).where(Robot.id.in_(id_list))
+        return {int(row[0]): str(row[1]) for row in self._db.execute(stmt).all()}

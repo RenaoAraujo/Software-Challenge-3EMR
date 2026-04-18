@@ -26,3 +26,7 @@ class AuthService:
         if not _pwd.verify(password, user.password_hash):
             return None
         return user
+
+    @staticmethod
+    def verify_password(user: User, plain: str) -> bool:
+        return bool(plain) and _pwd.verify(plain, user.password_hash)

@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 from app.models.entities import ServiceOrder
 from app.repositories.robot_repository import RobotRepository
 from app.repositories.service_order_repository import ServiceOrderRepository
-from app.schemas.historico import HistoricoDiaRemedios, RobotHistoricoStats
+from app.schemas.historico import (
+    HistoricoDiaOsConcluidas,
+    HistoricoDiaRemedios,
+    HistoricoDiaTempoMedioOs,
+    RobotHistoricoStats,
+)
 
 # Calendário “por dia” do gráfico alinhado ao horário de Brasília (evita somar 17+18 no mesmo dia UTC).
 _BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -38,6 +43,50 @@ def _remedios_agregados_por_dia(de: date, ate: date, orders: list[ServiceOrder])
     cur = de
     while cur <= ate:
         out.append(HistoricoDiaRemedios(data=cur, remedios=by_day.get(cur, 0)))
+        cur += timedelta(days=1)
+    return out
+
+
+def _os_concluidas_por_dia(de: date, ate: date, orders: list[ServiceOrder]) -> list[HistoricoDiaOsConcluidas]:
+    """Contagem por dia civil (America/São Paulo) de OS concluídas — uma OS conta no dia de `completed_at` (BR)."""
+    by_day: dict[date, int] = defaultdict(int)
+    for o in orders:
+        if not o.completed_at:
+            continue
+        dia = _data_conclusao_calendario_br(o.completed_at)
+        by_day[dia] += 1
+    out: list[HistoricoDiaOsConcluidas] = []
+    cur = de
+    while cur <= ate:
+        out.append(HistoricoDiaOsConcluidas(data=cur, ordens=by_day.get(cur, 0)))
+        cur += timedelta(days=1)
+    return out
+
+
+def _tempo_medio_os_por_dia(de: date, ate: date, orders: list[ServiceOrder]) -> list[HistoricoDiaTempoMedioOs]:
+    """Média (minutos) do intervalo assigned_at → completed_at por dia civil de conclusão (Brasil)."""
+    by_day: dict[date, list[float]] = defaultdict(list)
+    for o in orders:
+        if not o.completed_at or not o.assigned_at:
+            continue
+        dia = _data_conclusao_calendario_br(o.completed_at)
+        a = o.assigned_at
+        c = o.completed_at
+        if a.tzinfo is None:
+            a = a.replace(tzinfo=UTC)
+        if c.tzinfo is None:
+            c = c.replace(tzinfo=UTC)
+        delta_min = (c - a).total_seconds() / 60.0
+        if delta_min >= 0:
+            by_day[dia].append(delta_min)
+    out: list[HistoricoDiaTempoMedioOs] = []
+    cur = de
+    while cur <= ate:
+        mins = by_day.get(cur)
+        if mins:
+            out.append(HistoricoDiaTempoMedioOs(data=cur, minutos_medio=round(sum(mins) / len(mins), 1)))
+        else:
+            out.append(HistoricoDiaTempoMedioOs(data=cur, minutos_medio=None))
         cur += timedelta(days=1)
     return out
 
@@ -121,6 +170,8 @@ class HistoricoService:
             taxa = round(100.0 * unidades_empacotadas / unidades_previstas, 1)
 
         remedios_por_dia = _remedios_agregados_por_dia(de, ate, orders)
+        os_concluidas_por_dia = _os_concluidas_por_dia(de, ate, orders)
+        tempo_medio_os_por_dia = _tempo_medio_os_por_dia(de, ate, orders)
 
         return RobotHistoricoStats(
             robot_id=robot_id,
@@ -137,4 +188,6 @@ class HistoricoService:
             ordens_canceladas=ordens_canceladas,
             ordens_com_pausa=ordens_com_pausa,
             remedios_por_dia=remedios_por_dia,
+            os_concluidas_por_dia=os_concluidas_por_dia,
+            tempo_medio_os_por_dia=tempo_medio_os_por_dia,
         )

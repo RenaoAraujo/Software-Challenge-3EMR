@@ -3,6 +3,26 @@ from datetime import date
 from pydantic import BaseModel, Field
 
 
+class HistoricoDiaOsConcluidas(BaseModel):
+    """Quantidade de OS concluídas em um dia civil (America/Sao_Paulo), sem acumular."""
+
+    data: date
+    ordens: int = Field(ge=0, description="Número de OS concluídas neste dia.")
+
+
+class HistoricoDiaTempoMedioOs(BaseModel):
+    """Média do tempo (minutos) entre envio ao separador e conclusão, por dia civil (Brasil)."""
+
+    data: date
+    minutos_medio: float | None = Field(
+        default=None,
+        description=(
+            "Média em minutos das OS concluídas neste dia com assigned_at e completed_at válidos; "
+            "null se não houver OS com duração neste dia."
+        ),
+    )
+
+
 class HistoricoDiaRemedios(BaseModel):
     """Um dia do período (calendário America/Sao_Paulo) com total de remédios naquele dia, sem acumular dias anteriores."""
 
@@ -54,5 +74,19 @@ class RobotHistoricoStats(BaseModel):
         description=(
             "Para cada dia entre de e ate (inclusivo), soma das linhas de medicamento por dia civil "
             "(data/hora de conclusão convertida para America/Sao_Paulo). Valores são totais do dia, não acumulados."
+        ),
+    )
+    os_concluidas_por_dia: list[HistoricoDiaOsConcluidas] = Field(
+        default_factory=list,
+        description=(
+            "Para cada dia entre de e ate (inclusivo), quantidade de OS concluídas por dia civil "
+            "(America/Sao_Paulo). Um ponto por dia, não cumulativo."
+        ),
+    )
+    tempo_medio_os_por_dia: list[HistoricoDiaTempoMedioOs] = Field(
+        default_factory=list,
+        description=(
+            "Para cada dia entre de e ate (inclusivo), tempo médio (minutos) envio→conclusão das OS "
+            "concluídas naquele dia civil (America/Sao_Paulo); null nos dias sem OS com duração válida."
         ),
     )

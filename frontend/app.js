@@ -2,6 +2,16 @@
   const API_BASE = "/api";
   const THEME_KEY = "emr-theme";
   const SELECTED_ROBOT_KEY = "emr-selected-robot-id";
+  /** Última aba (operação / histórico / relatório / logs) para restaurar após novo login na mesma sessão do navegador. */
+  const LAST_APP_VIEW_KEY = "emr-last-app-view";
+  /** Sub-aba em Relatório: os | separador */
+  const LAST_RELATORIO_SUBTAB_KEY = "emr-relatorio-subtab";
+  const RELATORIO_OS_LIMIT = 100;
+  /** Último id de auditoria de OS concluída “visto” neste separador — badge = eventos com id maior. */
+  const NOTIF_LAST_SEEN_KEY = "emr-notif-last-seen-id";
+  /** Oculta na lista ids ≤ este valor após “Excluir” — novas conclusões (id maior) voltam a aparecer. */
+  const NOTIF_DISMISSED_MAX_KEY = "emr-notif-dismissed-max-id";
+  const NOTIF_POLL_INTERVAL_MS = 18000;
   const REMEDY_SIM_JOBS_KEY = "emr-remedy-sim-jobs";
   /** @deprecated migração — removidos após ler jobs novos */
   const REMEDY_SIM_ACTIVE_KEY = "emr-remedy-sim-active";
@@ -48,6 +58,37 @@
     editModalCancel: document.getElementById("edit-modal-cancel"),
     editModalSave: document.getElementById("edit-modal-save"),
     themeToggle: document.getElementById("theme-toggle"),
+    headerNotif: document.getElementById("header-notif"),
+    btnNotifications: document.getElementById("btn-notifications"),
+    notifPanel: document.getElementById("notif-panel"),
+    notifList: document.getElementById("notif-list"),
+    notifEmpty: document.getElementById("notif-empty"),
+    notifBadge: document.getElementById("notif-badge"),
+    btnNotifClear: document.getElementById("btn-notif-clear"),
+    btnProfile: document.getElementById("btn-profile"),
+    profileDrawer: document.getElementById("profile-drawer"),
+    profileDrawerBackdrop: document.getElementById("profile-drawer-backdrop"),
+    profileDrawerClose: document.getElementById("profile-drawer-close"),
+    profileUsernameDisplay: document.getElementById("profile-username-display"),
+    profileDrawerTabs: document.getElementById("profile-drawer-tabs"),
+    profileTabOwn: document.getElementById("profile-tab-own"),
+    profileTabUser: document.getElementById("profile-tab-user"),
+    profileTabNew: document.getElementById("profile-tab-new"),
+    profilePanelOwn: document.getElementById("profile-panel-own"),
+    profilePanelUser: document.getElementById("profile-panel-user"),
+    profilePanelNew: document.getElementById("profile-panel-new"),
+    profileUserSelect: document.getElementById("profile-user-select"),
+    profileTargetPwd: document.getElementById("profile-target-pwd"),
+    profileTargetAdmin: document.getElementById("profile-target-admin"),
+    formProfileOwnPwd: document.getElementById("form-profile-own-pwd"),
+    profileOwnCurrent: document.getElementById("profile-own-current"),
+    profileOwnNew: document.getElementById("profile-own-new"),
+    profileOwnNew2: document.getElementById("profile-own-new2"),
+    formProfileTarget: document.getElementById("form-profile-target"),
+    formProfileNewUser: document.getElementById("form-profile-new-user"),
+    profileNewUsername: document.getElementById("profile-new-username"),
+    profileNewPwd: document.getElementById("profile-new-pwd"),
+    profileNewAdmin: document.getElementById("profile-new-admin"),
     btnLogout: document.getElementById("btn-logout"),
     detailEmpty: document.getElementById("robot-detail-empty"),
     detailArticle: document.getElementById("robot-detail-article"),
@@ -67,10 +108,12 @@
     btnCancelarOs: document.getElementById("btn-cancelar-os"),
     tabOperacao: document.getElementById("tab-operacao"),
     tabHistorico: document.getElementById("tab-historico"),
+    tabRelatorio: document.getElementById("tab-relatorio"),
     tabLogs: document.getElementById("tab-logs"),
     viewOperacao: document.getElementById("view-operacao"),
     operacaoColetivaGrid: document.getElementById("operacao-coletiva-grid"),
     viewHistorico: document.getElementById("view-historico"),
+    viewRelatorio: document.getElementById("view-relatorio"),
     viewLogs: document.getElementById("view-logs"),
     logsResult: document.getElementById("logs-result"),
     btnLogsRefresh: document.getElementById("btn-logs-refresh"),
@@ -88,6 +131,24 @@
     historicoAte: document.getElementById("historico-ate"),
     historicoResult: document.getElementById("historico-result"),
     btnHistoricoConsultar: document.getElementById("btn-historico-consultar"),
+    relatorioTabOs: document.getElementById("relatorio-tab-os"),
+    relatorioTabSeparador: document.getElementById("relatorio-tab-separador"),
+    relatorioPanelOs: document.getElementById("relatorio-panel-os"),
+    relatorioPanelSeparador: document.getElementById("relatorio-panel-separador"),
+    formRelatorioOs: document.getElementById("form-relatorio-os"),
+    relatorioOsDe: document.getElementById("relatorio-os-de"),
+    relatorioOsAte: document.getElementById("relatorio-os-ate"),
+    relatorioOsFiltroOs: document.getElementById("relatorio-os-filtro-os"),
+    relatorioOsNome: document.getElementById("relatorio-os-nome"),
+    relatorioOsCliente: document.getElementById("relatorio-os-cliente"),
+    relatorioOsSituacao: document.getElementById("relatorio-os-situacao"),
+    relatorioOsNomeSeparador: document.getElementById("relatorio-os-nome-separador"),
+    relatorioOsCodigoSeparador: document.getElementById("relatorio-os-codigo-separador"),
+    relatorioOsResult: document.getElementById("relatorio-os-result"),
+    btnRelatorioOsConsultar: document.getElementById("btn-relatorio-os-consultar"),
+    btnRelatorioOsLimpar: document.getElementById("btn-relatorio-os-limpar"),
+    relatorioSeparadorBusca: document.getElementById("relatorio-separador-busca"),
+    relatorioSeparadorResult: document.getElementById("relatorio-separador-result"),
     formManualOs: document.getElementById("form-manual-os"),
     manualOsCode: document.getElementById("manual-os-code"),
     manualOsClient: document.getElementById("manual-os-client"),
@@ -103,9 +164,18 @@
 
   let csrfToken = "";
   let currentUserIsAdmin = false;
+  let currentUserId = null;
+  let currentUsername = "";
+  let profileUsersCache = [];
+  let profileDrawerPreviousFocus = null;
+  /** Painel ativo no perfil: own | user | new */
+  let profileDrawerView = "own";
   let selectedRobotId = null;
   let robotsCache = [];
-  let historicoUnidadesChart = null;
+  let historicoRemediosChart = null;
+  let historicoOsChart = null;
+  let historicoTempoOsChart = null;
+  let relatorioOsPageOffset = 0;
   const AUDIT_LOGS_LIMIT_KEY = "emr-audit-logs-limit";
   let auditLogsOffset = 0;
   let lastAuditLogsTotal = 0;
@@ -115,6 +185,9 @@
   let editModalPreviousFocus = null;
   let newRobotModalPreviousFocus = null;
   let manualOsModalPreviousFocus = null;
+  let notifItems = [];
+  let notifBaselineDone = false;
+  let notifPollTimer = null;
   let clearLogsModalPreviousFocus = null;
   let detailPollTimer = null;
   let detailPollRobotId = null;
@@ -308,6 +381,12 @@
           : "Tema claro (Apsen). Clique para tema escuro (Softtek).",
       );
     }
+    /* Dois frames: garante que getComputedStyle já veja --accent / fills após data-theme */
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        applyHistoricoChartsThemeColors();
+      });
+    });
   }
 
   function initThemeToggle() {
@@ -990,20 +1069,276 @@
     scheduleRemedySimulationStep(rid, tgt);
   }
 
-  function clearOperacaoListPoll() {
-    if (listPollTimer != null) {
-      clearInterval(listPollTimer);
-      listPollTimer = null;
+  /**
+   * Mantém a lista de separadores (e o detalhe do selecionado) atualizada em qualquer aba —
+   * Operação, Histórico ou Logs — para o cronômetro e unidades não “congelarem” ao consultar histórico.
+   */
+  function ensureOperacaoListPoll() {
+    if (listPollTimer != null) return;
+    listPollTimer = setInterval(() => {
+      void loadRobots({ silent: true });
+    }, LIST_POLL_INTERVAL_MS);
+  }
+
+  function readLastAppView() {
+    try {
+      const v = sessionStorage.getItem(LAST_APP_VIEW_KEY);
+      if (v === "operacao" || v === "historico" || v === "relatorio" || v === "logs") return v;
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  function getRelatorioSubtab() {
+    try {
+      const s = sessionStorage.getItem(LAST_RELATORIO_SUBTAB_KEY);
+      if (s === "os" || s === "separador") return s;
+    } catch {
+      /* ignore */
+    }
+    return "os";
+  }
+
+  function setRelatorioSubtab(which) {
+    const wasOs = el.relatorioTabOs?.classList.contains("relatorio-subtab--active");
+    const wasSep = el.relatorioTabSeparador?.classList.contains("relatorio-subtab--active");
+    const isOs = which === "os";
+    if (el.relatorioTabOs) {
+      el.relatorioTabOs.classList.toggle("relatorio-subtab--active", isOs);
+      el.relatorioTabOs.setAttribute("aria-selected", isOs ? "true" : "false");
+      el.relatorioTabOs.tabIndex = isOs ? 0 : -1;
+    }
+    if (el.relatorioTabSeparador) {
+      el.relatorioTabSeparador.classList.toggle("relatorio-subtab--active", !isOs);
+      el.relatorioTabSeparador.setAttribute("aria-selected", !isOs ? "true" : "false");
+      el.relatorioTabSeparador.tabIndex = !isOs ? 0 : -1;
+    }
+    if (el.relatorioPanelOs) {
+      const show = isOs;
+      el.relatorioPanelOs.classList.toggle("hidden", !show);
+      if (show) el.relatorioPanelOs.removeAttribute("hidden");
+      else el.relatorioPanelOs.setAttribute("hidden", "true");
+    }
+    if (el.relatorioPanelSeparador) {
+      const show = !isOs;
+      el.relatorioPanelSeparador.classList.toggle("hidden", !show);
+      if (show) el.relatorioPanelSeparador.removeAttribute("hidden");
+      else el.relatorioPanelSeparador.setAttribute("hidden", "true");
+    }
+    try {
+      sessionStorage.setItem(LAST_RELATORIO_SUBTAB_KEY, which);
+    } catch {
+      /* ignore */
+    }
+    if (isOs && !wasOs) {
+      void loadRelatorioOsList(true);
+    }
+    if (which === "separador" && !wasSep) {
+      void loadRelatorioSeparadorList();
     }
   }
 
-  function ensureOperacaoListPoll() {
-    if (el.viewOperacao?.classList.contains("hidden")) return;
-    if (listPollTimer != null) return;
-    listPollTimer = setInterval(() => {
-      if (el.viewOperacao?.classList.contains("hidden")) return;
-      void loadRobots({ silent: true });
-    }, LIST_POLL_INTERVAL_MS);
+  function initRelatorioSubtabs() {
+    setRelatorioSubtab(getRelatorioSubtab());
+  }
+
+  async function loadRelatorioOsList(resetOffset) {
+    if (!el.relatorioOsResult) return;
+    if (resetOffset) relatorioOsPageOffset = 0;
+    const de = el.relatorioOsDe?.value?.trim() || "";
+    const ate = el.relatorioOsAte?.value?.trim() || "";
+    if ((de && !ate) || (!de && ate)) {
+      toast("Preencha data inicial e final, ou deixe as duas em branco.", "error");
+      return;
+    }
+    el.relatorioOsResult.innerHTML = '<p class="historico-empty" role="status">Carregando…</p>';
+    if (el.btnRelatorioOsConsultar) el.btnRelatorioOsConsultar.disabled = true;
+    try {
+      const params = new URLSearchParams({
+        limit: String(RELATORIO_OS_LIMIT),
+        offset: String(relatorioOsPageOffset),
+      });
+      if (de && ate) {
+        params.set("de", de);
+        params.set("ate", ate);
+      }
+      const fo = el.relatorioOsFiltroOs?.value?.trim();
+      if (fo) params.set("os", fo);
+      const nm = el.relatorioOsNome?.value?.trim();
+      if (nm) params.set("nome", nm);
+      const cl = el.relatorioOsCliente?.value?.trim();
+      if (cl) params.set("cliente", cl);
+      const sit = el.relatorioOsSituacao?.value?.trim();
+      if (sit) params.set("situacao", sit);
+      const nsep = el.relatorioOsNomeSeparador?.value?.trim();
+      if (nsep) params.set("nome_separador", nsep);
+      const csep = el.relatorioOsCodigoSeparador?.value?.trim();
+      if (csep) params.set("codigo_separador", csep);
+      const res = await fetch(`${API_BASE}/service-orders/completed?${params}`, FETCH_CRED);
+      const text = await res.text();
+      if (res.status === 401) {
+        window.location.replace("/login.html");
+        return;
+      }
+      if (!res.ok) {
+        let msg = `Erro ${res.status}`;
+        try {
+          const err = JSON.parse(text);
+          msg = formatApiDetail(err.detail) || text || msg;
+        } catch {
+          if (text) msg = text;
+        }
+        el.relatorioOsResult.innerHTML = "";
+        toast(msg, "error");
+        return;
+      }
+      const data = JSON.parse(text);
+      renderRelatorioOsTable(data);
+    } catch (e) {
+      el.relatorioOsResult.innerHTML = "";
+      toast(e instanceof Error ? e.message : "Falha ao carregar relatório.", "error");
+    } finally {
+      if (el.btnRelatorioOsConsultar) el.btnRelatorioOsConsultar.disabled = false;
+    }
+  }
+
+  function clearRelatorioOsFilters() {
+    if (el.relatorioOsDe) el.relatorioOsDe.value = "";
+    if (el.relatorioOsAte) el.relatorioOsAte.value = "";
+    if (el.relatorioOsFiltroOs) el.relatorioOsFiltroOs.value = "";
+    if (el.relatorioOsNome) el.relatorioOsNome.value = "";
+    if (el.relatorioOsCliente) el.relatorioOsCliente.value = "";
+    if (el.relatorioOsSituacao) el.relatorioOsSituacao.value = "";
+    if (el.relatorioOsNomeSeparador) el.relatorioOsNomeSeparador.value = "";
+    if (el.relatorioOsCodigoSeparador) el.relatorioOsCodigoSeparador.value = "";
+    relatorioOsPageOffset = 0;
+    void loadRelatorioOsList(true);
+  }
+
+  function renderRelatorioOsTable(data) {
+    if (!el.relatorioOsResult) return;
+    const total = Number(data.total) || 0;
+    const items = Array.isArray(data.items) ? data.items : [];
+    const nf = new Intl.NumberFormat("pt-BR");
+    const from = total === 0 ? 0 : relatorioOsPageOffset + 1;
+    const to = relatorioOsPageOffset + items.length;
+    const canPrev = relatorioOsPageOffset > 0;
+    const canNext = to < total;
+    if (items.length === 0) {
+      el.relatorioOsResult.innerHTML =
+        '<p class="historico-empty" role="status">Nenhuma OS encontrada para o filtro.</p>';
+      return;
+    }
+    const rows = items
+      .map((row) => {
+        const rawData = row.data;
+        const dataOnly =
+          rawData != null && String(rawData).trim() !== ""
+            ? new Date(`${String(rawData).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+              })
+            : "—";
+        const sep = row.separador_nome
+          ? escapeHtml(String(row.separador_nome))
+          : "Separador removido ou não identificado";
+        const situacao =
+          row.situacao === "cancelada"
+            ? "Cancelada"
+            : row.situacao === "concluida"
+              ? "Concluída"
+              : escapeHtml(String(row.situacao || "—"));
+        return `<tr>
+          <td class="logs-table__time">${dataOnly}</td>
+          <td>${escapeHtml(String(row.os_code))}</td>
+          <td>${escapeHtml(row.client_name ? String(row.client_name) : "—")}</td>
+          <td>${sep}</td>
+          <td>${nf.format(Number(row.unidades_totais) || 0)}</td>
+          <td>${situacao}</td>
+        </tr>`;
+      })
+      .join("");
+    const showPager = canPrev || canNext;
+    const pager = showPager
+      ? `<div class="logs-pagination" role="navigation" aria-label="Páginas do relatório">
+            <button type="button" class="btn btn--ghost btn--small" data-relatorio-os-page="prev" ${
+              canPrev ? "" : "disabled"
+            }>Anterior</button>
+            <span class="logs-pagination__status">${formatHistoricoNum(from)}–${formatHistoricoNum(to)} de ${formatHistoricoNum(total)}</span>
+            <button type="button" class="btn btn--ghost btn--small" data-relatorio-os-page="next" ${
+              canNext ? "" : "disabled"
+            }>Próxima</button>
+          </div>`
+      : `<p class="logs-table__meta">Mostrando ${formatHistoricoNum(from)}–${formatHistoricoNum(to)} de ${formatHistoricoNum(total)} no filtro.</p>`;
+    el.relatorioOsResult.innerHTML = `
+      <div class="logs-table-wrap" role="region" aria-label="Relatório de ordens encerradas" tabindex="0">
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th scope="col">Data</th>
+              <th scope="col">OS</th>
+              <th scope="col">Cliente</th>
+              <th scope="col">Separador</th>
+              <th scope="col">Unidades totais</th>
+              <th scope="col">Situação</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${pager}`;
+  }
+
+  async function loadRelatorioSeparadorList() {
+    if (!el.relatorioSeparadorResult) return;
+    el.relatorioSeparadorResult.innerHTML =
+      '<p class="historico-empty" role="status">Carregando…</p>';
+    await loadRobots({ silent: true });
+    renderRelatorioSeparadorList();
+  }
+
+  function renderRelatorioSeparadorList() {
+    if (!el.relatorioSeparadorResult) return;
+    let robots = Array.isArray(robotsCache) ? [...robotsCache] : [];
+    const q = (el.relatorioSeparadorBusca?.value || "").trim().toLowerCase();
+    if (q) {
+      robots = robots.filter((r) => String(r.name || "").toLowerCase().includes(q));
+    }
+    robots.sort((a, b) => String(a.name).localeCompare(String(b.name), "pt-BR"));
+    if (!robots.length) {
+      el.relatorioSeparadorResult.innerHTML =
+        '<p class="historico-empty" role="status">' +
+          (q
+            ? "Nenhum separador com esse nome."
+            : "Nenhum separador cadastrado.") +
+        "</p>";
+      return;
+    }
+    const items = robots
+      .map((r) => {
+        const online = robotIsOnline(r);
+        const badgeClass = connectivityBadgeClass(online);
+        const badgeText = connectivityLabel(online);
+        const loc = r.location ? escapeHtml(String(r.location)) : "";
+        const codeLine = loc
+          ? `${escapeHtml(String(r.code))} · ${loc}`
+          : escapeHtml(String(r.code));
+        return `<li class="relatorio-separador-list__item">
+          <div class="relatorio-separador-card">
+            <div class="relatorio-separador-card__head">
+              <span class="relatorio-separador-card__name">${escapeHtml(String(r.name))}</span>
+              <span class="badge ${badgeClass}" aria-label="${online ? "Separador online" : "Separador offline"}">${badgeText}</span>
+            </div>
+            <p class="relatorio-separador-card__meta">${codeLine}</p>
+            <p class="relatorio-separador-card__model">${escapeHtml(String(r.model || "—"))}</p>
+            <p class="relatorio-separador-card__status">${escapeHtml(formatOsActivityStatus(r.status))}</p>
+          </div>
+        </li>`;
+      })
+      .join("");
+    el.relatorioSeparadorResult.innerHTML = `<ul class="relatorio-separador-list" role="list">${items}</ul>`;
   }
 
   function setAppView(view) {
@@ -1012,9 +1347,11 @@
     }
     const isOp = view === "operacao";
     const isHist = view === "historico";
+    const isRel = view === "relatorio";
     const isLogs = view === "logs";
     if (el.viewOperacao) el.viewOperacao.classList.toggle("hidden", !isOp);
     if (el.viewHistorico) el.viewHistorico.classList.toggle("hidden", !isHist);
+    if (el.viewRelatorio) el.viewRelatorio.classList.toggle("hidden", !isRel);
     if (el.viewLogs) el.viewLogs.classList.toggle("hidden", !isLogs);
     if (el.tabOperacao) {
       el.tabOperacao.classList.toggle("app-nav__tab--active", isOp);
@@ -1024,18 +1361,357 @@
       el.tabHistorico.classList.toggle("app-nav__tab--active", isHist);
       el.tabHistorico.setAttribute("aria-selected", isHist ? "true" : "false");
     }
+    if (el.tabRelatorio) {
+      el.tabRelatorio.classList.toggle("app-nav__tab--active", isRel);
+      el.tabRelatorio.setAttribute("aria-selected", isRel ? "true" : "false");
+    }
     if (el.tabLogs) {
       el.tabLogs.classList.toggle("app-nav__tab--active", isLogs);
       el.tabLogs.setAttribute("aria-selected", isLogs ? "true" : "false");
     }
+    try {
+      sessionStorage.setItem(LAST_APP_VIEW_KEY, view);
+    } catch {
+      /* ignore */
+    }
+    ensureOperacaoListPoll();
     if (isOp) {
-      ensureOperacaoListPoll();
       void loadRobots({ silent: true });
-    } else {
-      clearOperacaoListPoll();
     }
     if (isHist) populateHistoricoRobotSelect();
     if (isLogs) void loadAuditLogs();
+    if (isRel && getRelatorioSubtab() === "os") {
+      void loadRelatorioOsList(true);
+    }
+    if (isRel && getRelatorioSubtab() === "separador") {
+      void loadRelatorioSeparadorList();
+    }
+  }
+
+  function readNotifLastSeenId() {
+    try {
+      const v = sessionStorage.getItem(NOTIF_LAST_SEEN_KEY);
+      if (v == null) return null;
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeNotifLastSeenId(id) {
+    try {
+      sessionStorage.setItem(NOTIF_LAST_SEEN_KEY, String(id));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function readNotifDismissedMaxId() {
+    try {
+      const v = sessionStorage.getItem(NOTIF_DISMISSED_MAX_KEY);
+      if (v == null) return 0;
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function writeNotifDismissedMaxId(id) {
+    try {
+      sessionStorage.setItem(NOTIF_DISMISSED_MAX_KEY, String(id));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function notifVisibleItems() {
+    const d = readNotifDismissedMaxId();
+    return notifItems.filter((i) => i.id > d);
+  }
+
+  function maxNotifId(items) {
+    if (!items.length) return 0;
+    return Math.max(...items.map((x) => x.id));
+  }
+
+  function isNotifPanelOpen() {
+    return el.notifPanel != null && !el.notifPanel.hidden;
+  }
+
+  function setNotifPanelOpen(open) {
+    if (!el.notifPanel || !el.btnNotifications) return;
+    el.notifPanel.hidden = !open;
+    el.btnNotifications.setAttribute("aria-expanded", open ? "true" : "false");
+    el.headerNotif?.classList.toggle("header-notif--open", open);
+    if (open) {
+      const mx = maxNotifId(notifItems);
+      writeNotifLastSeenId(mx);
+      updateNotifBadge();
+    }
+  }
+
+  function toggleNotifPanel() {
+    setNotifPanelOpen(!isNotifPanelOpen());
+  }
+
+  function updateNotifBadge() {
+    if (!el.notifBadge) return;
+    const lastSeen = readNotifLastSeenId() ?? 0;
+    const unread = notifItems.filter((i) => i.id > lastSeen).length;
+    if (unread > 0) {
+      el.notifBadge.textContent = unread > 99 ? "99+" : String(unread);
+      el.notifBadge.hidden = false;
+    } else {
+      el.notifBadge.hidden = true;
+    }
+  }
+
+  function formatNotifWhen(iso) {
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "—";
+      return d.toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "—";
+    }
+  }
+
+  function renderNotifList() {
+    if (!el.notifList || !el.notifEmpty) return;
+    const visible = notifVisibleItems();
+    if (el.btnNotifClear) {
+      el.btnNotifClear.disabled = visible.length === 0;
+    }
+    if (!notifItems.length) {
+      el.notifEmpty.textContent = "Nenhuma conclusão recente.";
+      el.notifEmpty.hidden = false;
+      el.notifList.hidden = true;
+      el.notifList.innerHTML = "";
+      return;
+    }
+    if (!visible.length) {
+      el.notifEmpty.textContent = "Lista limpa. Novas conclusões aparecerão aqui.";
+      el.notifEmpty.hidden = false;
+      el.notifList.hidden = true;
+      el.notifList.innerHTML = "";
+      return;
+    }
+    el.notifEmpty.hidden = true;
+    el.notifList.hidden = false;
+    el.notifList.innerHTML = visible
+      .map((it) => {
+        const desc = escapeHtml(String(it.description || "").trim() || "(sem descrição)");
+        const user = escapeHtml(String(it.username || "—"));
+        const when = formatNotifWhen(it.created_at);
+        return `<li class="header-notif__item"><div>${desc}</div><div class="header-notif__item-meta"><span>${when}</span><span>${user}</span></div></li>`;
+      })
+      .join("");
+  }
+
+  function clearNotificationsFromPanel() {
+    if (!notifItems.length) return;
+    const mx = maxNotifId(notifItems);
+    writeNotifLastSeenId(mx);
+    writeNotifDismissedMaxId(mx);
+    updateNotifBadge();
+    renderNotifList();
+  }
+
+  async function fetchNotifications() {
+    if (!el.notifPanel) return;
+    try {
+      const res = await fetch(`${API_BASE}/notifications/os-completions?limit=40`, FETCH_CRED);
+      if (res.status === 401) return;
+      if (!res.ok) return;
+      const data = await res.json();
+      const items = Array.isArray(data.items) ? data.items : [];
+      notifItems = items;
+
+      if (readNotifLastSeenId() === null && !notifBaselineDone) {
+        notifBaselineDone = true;
+        writeNotifLastSeenId(maxNotifId(items));
+      } else {
+        notifBaselineDone = true;
+      }
+
+      if (isNotifPanelOpen()) {
+        writeNotifLastSeenId(maxNotifId(notifItems));
+      }
+
+      renderNotifList();
+      updateNotifBadge();
+    } catch {
+      if (el.notifEmpty && el.notifEmpty.textContent === "Carregando…") {
+        el.notifEmpty.textContent = "Não foi possível carregar.";
+      }
+    }
+  }
+
+  function ensureNotificationsPoll() {
+    if (notifPollTimer != null) return;
+    notifPollTimer = setInterval(() => {
+      void fetchNotifications();
+    }, NOTIF_POLL_INTERVAL_MS);
+  }
+
+  function isProfileDrawerOpen() {
+    return el.profileDrawer != null && !el.profileDrawer.hidden;
+  }
+
+  function syncProfileSheetTop() {
+    const hdr = document.querySelector(".header");
+    const top = hdr ? Math.ceil(hdr.getBoundingClientRect().bottom) : 0;
+    document.documentElement.style.setProperty("--profile-sheet-top", `${top}px`);
+  }
+
+  function onProfileDrawerLayoutTick() {
+    if (!isProfileDrawerOpen()) return;
+    syncProfileSheetTop();
+  }
+
+  function updateProfileDrawerTabsForRole() {
+    const admin = currentUserIsAdmin;
+    el.profileTabUser?.classList.toggle("hidden", !admin);
+    el.profileTabNew?.classList.toggle("hidden", !admin);
+    if (!admin && profileDrawerView !== "own") {
+      profileDrawerView = "own";
+    }
+  }
+
+  function setProfileDrawerView(view) {
+    let v = view;
+    if ((v === "user" || v === "new") && !currentUserIsAdmin) {
+      v = "own";
+    }
+    profileDrawerView = v;
+    const rows = [
+      ["own", el.profileTabOwn, el.profilePanelOwn],
+      ["user", el.profileTabUser, el.profilePanelUser],
+      ["new", el.profileTabNew, el.profilePanelNew],
+    ];
+    for (const [id, tab, panel] of rows) {
+      const on = id === profileDrawerView;
+      if (tab) {
+        tab.classList.toggle("profile-drawer__tab--active", on);
+        tab.setAttribute("aria-selected", on ? "true" : "false");
+        tab.tabIndex = on ? 0 : -1;
+      }
+      if (panel) {
+        if (on) {
+          panel.removeAttribute("hidden");
+          panel.classList.remove("hidden");
+        } else {
+          panel.setAttribute("hidden", "true");
+          panel.classList.add("hidden");
+        }
+      }
+    }
+  }
+
+  function openProfileDrawer() {
+    if (!el.profileDrawer || !el.profileDrawerBackdrop) return;
+    syncProfileSheetTop();
+    window.addEventListener("resize", onProfileDrawerLayoutTick);
+    window.addEventListener("scroll", onProfileDrawerLayoutTick, true);
+    profileDrawerPreviousFocus = document.activeElement;
+    el.profileDrawer.hidden = false;
+    el.profileDrawerBackdrop.hidden = false;
+    el.profileDrawer.setAttribute("aria-hidden", "false");
+    el.profileDrawerBackdrop.setAttribute("aria-hidden", "false");
+    el.btnProfile?.setAttribute("aria-expanded", "true");
+    requestAnimationFrame(() => {
+      document.body.classList.add("profile-drawer-open");
+    });
+    if (el.profileUsernameDisplay) el.profileUsernameDisplay.textContent = currentUsername || "—";
+    profileDrawerView = "own";
+    updateProfileDrawerTabsForRole();
+    setProfileDrawerView("own");
+    if (currentUserIsAdmin) {
+      void loadProfileUserListForDrawer();
+    }
+    el.profileDrawerClose?.focus();
+  }
+
+  function closeProfileDrawer() {
+    if (!el.profileDrawer || !el.profileDrawerBackdrop) return;
+    window.removeEventListener("resize", onProfileDrawerLayoutTick);
+    window.removeEventListener("scroll", onProfileDrawerLayoutTick, true);
+    document.documentElement.style.removeProperty("--profile-sheet-top");
+    document.body.classList.remove("profile-drawer-open");
+    el.profileDrawer.hidden = true;
+    el.profileDrawerBackdrop.hidden = true;
+    el.profileDrawer.setAttribute("aria-hidden", "true");
+    el.profileDrawerBackdrop.setAttribute("aria-hidden", "true");
+    el.btnProfile?.setAttribute("aria-expanded", "false");
+    if (profileDrawerPreviousFocus && typeof profileDrawerPreviousFocus.focus === "function") {
+      try {
+        profileDrawerPreviousFocus.focus();
+      } catch {
+        /* ignore */
+      }
+    }
+    profileDrawerPreviousFocus = null;
+  }
+
+  function syncProfileTargetFromSelect() {
+    if (!el.profileUserSelect || !el.profileTargetAdmin) return;
+    const id = parseInt(el.profileUserSelect.value, 10);
+    const u = profileUsersCache.find((x) => Number(x.id) === id);
+    if (u) el.profileTargetAdmin.checked = Boolean(u.is_admin);
+    if (el.profileTargetPwd) el.profileTargetPwd.value = "";
+  }
+
+  async function loadProfileUserListForDrawer() {
+    if (!el.profileUserSelect || !currentUserIsAdmin) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/users`, FETCH_CRED);
+      if (res.status === 401) return;
+      if (!res.ok) {
+        el.profileUserSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+        return;
+      }
+      const data = await res.json();
+      profileUsersCache = Array.isArray(data.users) ? data.users : [];
+      el.profileUserSelect.innerHTML = profileUsersCache
+        .map((u) => {
+          const label = `${u.username}${u.is_admin ? " (admin)" : ""}`;
+          return `<option value="${u.id}">${escapeHtml(label)}</option>`;
+        })
+        .join("");
+      if (currentUserId != null) {
+        const sid = String(currentUserId);
+        const has = profileUsersCache.some((u) => String(u.id) === sid);
+        if (has) el.profileUserSelect.value = sid;
+      }
+      syncProfileTargetFromSelect();
+    } catch {
+      if (el.profileUserSelect) el.profileUserSelect.innerHTML = '<option value="">—</option>';
+    }
+  }
+
+  async function refreshSessionUserFromMe() {
+    try {
+      const me = await fetch(`${API_BASE}/auth/me`, FETCH_CRED);
+      if (!me.ok) return;
+      const meData = await me.json();
+      applyAdminUiFromSession(meData.user?.is_admin);
+      currentUserId = meData.user?.id != null ? Number(meData.user.id) : null;
+      currentUsername = meData.user?.username != null ? String(meData.user.username) : "";
+      if (el.profileUsernameDisplay && isProfileDrawerOpen()) {
+        el.profileUsernameDisplay.textContent = currentUsername || "—";
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   function applyAdminUiFromSession(isAdmin) {
@@ -1049,6 +1725,8 @@
         el.tabLogs.setAttribute("hidden", "true");
       }
     }
+    updateProfileDrawerTabsForRole();
+    setProfileDrawerView(profileDrawerView);
     if (!currentUserIsAdmin && el.viewLogs && !el.viewLogs.classList.contains("hidden")) {
       setAppView("operacao");
     }
@@ -1066,6 +1744,12 @@
       os_paused: "OS pausada",
       os_resumed: "OS retomada",
       os_completed_auto: "OS terminada (concluída automática)",
+      password_changed_self: "Alterou a própria senha",
+      password_changed_by_admin: "Alterou senha de outro usuário",
+      user_created: "Cadastrou usuário",
+      user_promoted_admin: "Promoveu a administrador",
+      user_demoted_admin: "Removeu perfil de administrador",
+      user_updated_by_admin: "Alterou outro usuário (admin)",
     };
     return m[action] || action;
   }
@@ -1196,40 +1880,100 @@
     return new Intl.NumberFormat("pt-BR").format(n);
   }
 
-  function destroyHistoricoUnidadesChart() {
-    if (historicoUnidadesChart) {
-      historicoUnidadesChart.destroy();
-      historicoUnidadesChart = null;
+  function destroyHistoricoCharts() {
+    if (historicoRemediosChart) {
+      historicoRemediosChart.destroy();
+      historicoRemediosChart = null;
+    }
+    if (historicoOsChart) {
+      historicoOsChart.destroy();
+      historicoOsChart = null;
+    }
+    if (historicoTempoOsChart) {
+      historicoTempoOsChart.destroy();
+      historicoTempoOsChart = null;
     }
   }
 
-  function paintHistoricoUnidadesChart(serie) {
-    destroyHistoricoUnidadesChart();
-    const canvas = document.getElementById("historico-remedios-chart");
-    if (!canvas || typeof window.Chart === "undefined") return;
+  function historicoCssVar(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  function applyHistoricoChartsThemeColors() {
+    const grid = historicoCssVar("--historico-chart-grid", "rgba(128, 128, 128, 0.15)");
+    const tick = historicoCssVar("--text-muted", "#888");
+    function patch(chart) {
+      if (!chart || !chart._historicoTheme) return;
+      const { lineVar, fillVar } = chart._historicoTheme;
+      const line = historicoCssVar(lineVar, "#0082df");
+      const fill = historicoCssVar(fillVar, line);
+      const ds = chart.data.datasets[0];
+      ds.borderColor = line;
+      ds.backgroundColor = fill;
+      ds.pointBackgroundColor = line;
+      ds.pointBorderColor = line;
+      ds.pointHoverBackgroundColor = line;
+      ds.pointHoverBorderColor = line;
+      if (!chart.options.elements) chart.options.elements = {};
+      if (!chart.options.elements.point) chart.options.elements.point = {};
+      const pt = chart.options.elements.point;
+      pt.backgroundColor = line;
+      pt.borderColor = line;
+      pt.hoverBackgroundColor = line;
+      pt.hoverBorderColor = line;
+      if (chart.options?.scales?.x) {
+        chart.options.scales.x.grid.color = grid;
+        chart.options.scales.x.ticks.color = tick;
+      }
+      if (chart.options?.scales?.y) {
+        chart.options.scales.y.grid.color = grid;
+        chart.options.scales.y.ticks.color = tick;
+      }
+      /* update() sem modo redesenha cores; 'none' pode não refletir troca de tema */
+      chart.update();
+    }
+    patch(historicoRemediosChart);
+    patch(historicoOsChart);
+    patch(historicoTempoOsChart);
+  }
+
+  /**
+   * @param {string} canvasId
+   * @param {unknown[]} serie
+   * @param {{ valueKey: string; datasetLabel: string; lineColorVar: string; fillColorVar: string; formatTooltip: (v: number) => string; nullableValues?: boolean; yTickPrecision?: number }} opts
+   */
+  function createHistoricoAreaChart(canvasId, serie, opts) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof window.Chart === "undefined") return null;
     const points = Array.isArray(serie) ? serie : [];
+    const nullableY = Boolean(opts.nullableValues);
+    const yPrec = opts.yTickPrecision != null ? opts.yTickPrecision : 0;
     const labels = points.map((p) => {
       const raw = p.data;
       const d = new Date(typeof raw === "string" ? `${raw}T12:00:00` : raw);
       return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
     });
-    const values = points.map((p) => Number(p.remedios ?? p.unidades) || 0);
-    const root = getComputedStyle(document.documentElement);
-    const lineColor = (root.getPropertyValue("--accent-hover") || "#0082df").trim();
-    const gridMinor =
-      document.documentElement.getAttribute("data-theme") === "light"
-        ? "rgba(15, 55, 95, 0.08)"
-        : "rgba(200, 220, 235, 0.12)";
-    const tickColor = (root.getPropertyValue("--text-muted") || "#888").trim();
-    const fillColor = lineColor.length === 7 ? `${lineColor}22` : "rgba(0, 130, 223, 0.14)";
+    const values = points.map((p) => {
+      let v = p[opts.valueKey];
+      if ((v == null || v === "") && opts.valueKey === "remedios") v = p.unidades;
+      if (nullableY && (v == null || v === "")) return null;
+      const n = Number(v);
+      if (nullableY && !Number.isFinite(n)) return null;
+      return nullableY ? n : Number(v) || 0;
+    });
+    const lineColor = historicoCssVar(opts.lineColorVar, "#0082df");
+    const fillColor = historicoCssVar(opts.fillColorVar, lineColor);
+    const gridMinor = historicoCssVar("--historico-chart-grid", "rgba(128, 128, 128, 0.15)");
+    const tickColor = historicoCssVar("--text-muted", "#888");
 
-    historicoUnidadesChart = new window.Chart(canvas.getContext("2d"), {
+    const chart = new window.Chart(canvas.getContext("2d"), {
       type: "line",
       data: {
         labels,
         datasets: [
           {
-            label: "Remédios (linhas)",
+            label: opts.datasetLabel,
             data: values,
             borderColor: lineColor,
             backgroundColor: fillColor,
@@ -1238,6 +1982,10 @@
             spanGaps: false,
             pointRadius: points.length > 45 ? 0 : 3,
             pointHoverRadius: 5,
+            pointBackgroundColor: lineColor,
+            pointBorderColor: lineColor,
+            pointHoverBackgroundColor: lineColor,
+            pointHoverBorderColor: lineColor,
             borderWidth: 2,
           },
         ],
@@ -1246,7 +1994,16 @@
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
+        elements: {
+          point: {
+            backgroundColor: lineColor,
+            borderColor: lineColor,
+            hoverBackgroundColor: lineColor,
+            hoverBorderColor: lineColor,
+          },
+        },
         plugins: {
+          colors: { enabled: false },
           legend: { display: false },
           tooltip: {
             callbacks: {
@@ -1264,7 +2021,8 @@
               },
               label(item) {
                 const v = item.parsed.y;
-                return `${new Intl.NumberFormat("pt-BR").format(v)} remédio(s)`;
+                if (v == null || Number.isNaN(Number(v))) return "";
+                return opts.formatTooltip(Number(v));
               },
             },
           },
@@ -1283,19 +2041,35 @@
           y: {
             beginAtZero: true,
             grid: { color: gridMinor },
-            ticks: {
-              color: tickColor,
-              precision: 0,
-            },
+            ticks:
+              yPrec > 0
+                ? {
+                    color: tickColor,
+                    callback(value) {
+                      return Number(value).toLocaleString("pt-BR", {
+                        minimumFractionDigits: yPrec,
+                        maximumFractionDigits: yPrec,
+                      });
+                    },
+                  }
+                : {
+                    color: tickColor,
+                    precision: 0,
+                  },
           },
         },
       },
     });
+    chart._historicoTheme = {
+      lineVar: opts.lineColorVar,
+      fillVar: opts.fillColorVar,
+    };
+    return chart;
   }
 
   function renderHistoricoStats(data) {
     if (!el.historicoResult) return;
-    destroyHistoricoUnidadesChart();
+    destroyHistoricoCharts();
     const nConc = Number(data.ordens_concluidas) || 0;
     const nCanc = Number(data.ordens_canceladas) || 0;
     const nPausa = Number(data.ordens_com_pausa) || 0;
@@ -1313,16 +2087,30 @@
       data.tempo_medio_por_medicamento_segundos != null
         ? `${formatHistoricoNum(data.tempo_medio_por_medicamento_segundos)} s`
         : "—";
-    const taxa =
-      data.taxa_unidades_percent != null ? `${formatHistoricoNum(data.taxa_unidades_percent)} %` : "—";
     const showChart = nConc > 0;
     const chartBlock = showChart
       ? `
-      <div class="historico-chart-card" role="region" aria-label="Gráfico de remédios empacotados por dia">
-        <h3 class="historico-chart__title">Remédios empacotados por dia</h3>
-        <p class="historico-chart__lede">Total por dia civil (horário de Brasília): cada ponto é só aquele dia, sem somar com os anteriores.</p>
-        <div class="historico-chart__canvas-wrap">
-          <canvas id="historico-remedios-chart" width="400" height="220"></canvas>
+      <div class="historico-charts-row">
+        <div class="historico-chart-card" role="region" aria-label="Gráfico de remédios empacotados por dia">
+          <h3 class="historico-chart__title">Remédios empacotados por dia</h3>
+          <p class="historico-chart__lede">Total por dia civil (Brasília); cada ponto é só aquele dia.</p>
+          <div class="historico-chart__canvas-wrap">
+            <canvas id="historico-remedios-chart" width="400" height="200"></canvas>
+          </div>
+        </div>
+        <div class="historico-chart-card" role="region" aria-label="Gráfico de OS concluídas por dia">
+          <h3 class="historico-chart__title">OS concluídas por dia</h3>
+          <p class="historico-chart__lede">Quantidade de OS finalizadas por dia civil (Brasília).</p>
+          <div class="historico-chart__canvas-wrap">
+            <canvas id="historico-os-chart" width="400" height="200"></canvas>
+          </div>
+        </div>
+        <div class="historico-chart-card" role="region" aria-label="Gráfico de tempo médio por OS por dia">
+          <h3 class="historico-chart__title">Tempo médio por OS (min)</h3>
+          <p class="historico-chart__lede">Média do envio à conclusão por dia civil (Brasília); sem ponto nos dias sem OS com tempo válido.</p>
+          <div class="historico-chart__canvas-wrap">
+            <canvas id="historico-tempo-os-chart" width="400" height="200"></canvas>
+          </div>
         </div>
       </div>`
       : "";
@@ -1364,22 +2152,44 @@
           <p class="metric-box__value metric-box__value--elapsed">${tmedMed}</p>
           <span class="metric-box__hint">s por unidade no período</span>
         </div>
-        <div class="metric-box metric-box--progress" role="listitem">
-          <span class="metric-box__label">Taxa empacotado / previsto</span>
-          <p class="metric-box__value metric-box__value--elapsed">${taxa}</p>
-          <span class="metric-box__hint">referência de produtividade</span>
-        </div>
       </div>
       ${chartBlock}
       </div>
     `;
     if (showChart) {
-      const serie = Array.isArray(data.remedios_por_dia)
+      const serieRem = Array.isArray(data.remedios_por_dia)
         ? data.remedios_por_dia
         : Array.isArray(data.unidades_por_dia)
           ? data.unidades_por_dia
           : [];
-      requestAnimationFrame(() => paintHistoricoUnidadesChart(serie));
+      const serieOs = Array.isArray(data.os_concluidas_por_dia) ? data.os_concluidas_por_dia : [];
+      const serieTmo = Array.isArray(data.tempo_medio_os_por_dia) ? data.tempo_medio_os_por_dia : [];
+      const nf = new Intl.NumberFormat("pt-BR");
+      requestAnimationFrame(() => {
+        historicoRemediosChart = createHistoricoAreaChart("historico-remedios-chart", serieRem, {
+          valueKey: "remedios",
+          datasetLabel: "Remédios (linhas)",
+          lineColorVar: "--accent-hover",
+          fillColorVar: "--historico-chart-fill-remedios",
+          formatTooltip: (v) => `${nf.format(v)} remédio(s)`,
+        });
+        historicoOsChart = createHistoricoAreaChart("historico-os-chart", serieOs, {
+          valueKey: "ordens",
+          datasetLabel: "OS concluídas",
+          lineColorVar: "--accent",
+          fillColorVar: "--historico-chart-fill-os",
+          formatTooltip: (v) => `${nf.format(v)} OS`,
+        });
+        historicoTempoOsChart = createHistoricoAreaChart("historico-tempo-os-chart", serieTmo, {
+          valueKey: "minutos_medio",
+          datasetLabel: "Tempo médio (min)",
+          lineColorVar: "--accent",
+          fillColorVar: "--historico-chart-fill-os",
+          nullableValues: true,
+          yTickPrecision: 1,
+          formatTooltip: (v) => `${nf.format(v)} min`,
+        });
+      });
     }
   }
 
@@ -1647,12 +2457,13 @@
       if (el.historicoRobot && !el.viewHistorico?.classList.contains("hidden")) {
         populateHistoricoRobotSelect();
       }
+      if (!el.viewRelatorio?.classList.contains("hidden") && getRelatorioSubtab() === "separador") {
+        renderRelatorioSeparadorList();
+      }
       el.connStatus.textContent = "Conectado";
       el.connStatus.className = "badge badge--ok";
       ensureRemedySimulationsRunning();
-      if (!el.viewOperacao?.classList.contains("hidden")) {
-        ensureOperacaoListPoll();
-      }
+      ensureOperacaoListPoll();
       if (selectedRobotId != null && !data.some((r) => r.id === selectedRobotId)) {
         selectedRobotId = null;
         persistSelectedRobotId(null);
@@ -1789,7 +2600,193 @@
     loadRobots();
   });
 
+  el.btnNotifications?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    toggleNotifPanel();
+  });
+
+  el.btnProfile?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (isProfileDrawerOpen()) closeProfileDrawer();
+    else openProfileDrawer();
+  });
+
+  [el.profileTabOwn, el.profileTabUser, el.profileTabNew].forEach((tab) => {
+    tab?.addEventListener("click", () => {
+      const v = tab.getAttribute("data-profile-view");
+      if (!v) return;
+      setProfileDrawerView(v);
+      if (v === "user" && currentUserIsAdmin) {
+        void loadProfileUserListForDrawer();
+      }
+    });
+  });
+  el.profileDrawerBackdrop?.addEventListener("click", () => closeProfileDrawer());
+  el.profileDrawerClose?.addEventListener("click", () => closeProfileDrawer());
+  el.profileUserSelect?.addEventListener("change", () => syncProfileTargetFromSelect());
+
+  el.formProfileOwnPwd?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const cur = el.profileOwnCurrent?.value ?? "";
+    const n1 = el.profileOwnNew?.value ?? "";
+    const n2 = el.profileOwnNew2?.value ?? "";
+    if (n1 !== n2) {
+      toast("As novas senhas não coincidem.", "error");
+      return;
+    }
+    if (n1.length < 6) {
+      toast("A nova senha deve ter pelo menos 6 caracteres.", "error");
+      return;
+    }
+    await fetchCsrf();
+    const btn = el.formProfileOwnPwd?.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await apiJson("/auth/me/password", {
+        method: "PATCH",
+        body: JSON.stringify({ current_password: cur, new_password: n1 }),
+      });
+      if (res.status === 401) {
+        window.location.replace("/login.html");
+        return;
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = `Erro ${res.status}`;
+        try {
+          const err = JSON.parse(text);
+          msg = formatApiDetail(err.detail) || text || msg;
+        } catch {
+          if (text) msg = text;
+        }
+        toast(msg, "error");
+        return;
+      }
+      toast("Senha alterada.", "success");
+      el.formProfileOwnPwd.reset();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Falha ao alterar senha.", "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  el.formProfileTarget?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (!currentUserIsAdmin) return;
+    const id = parseInt(el.profileUserSelect?.value, 10);
+    if (Number.isNaN(id)) {
+      toast("Selecione um usuário.", "error");
+      return;
+    }
+    const pwd = (el.profileTargetPwd?.value || "").trim();
+    const isAdm = Boolean(el.profileTargetAdmin?.checked);
+    const body = { is_admin: isAdm };
+    if (pwd.length) body.new_password = pwd;
+    await fetchCsrf();
+    const btn = el.formProfileTarget?.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await apiJson(`/admin/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) {
+        window.location.replace("/login.html");
+        return;
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = `Erro ${res.status}`;
+        try {
+          const err = JSON.parse(text);
+          msg = formatApiDetail(err.detail) || text || msg;
+        } catch {
+          if (text) msg = text;
+        }
+        toast(msg, "error");
+        return;
+      }
+      toast("Usuário atualizado.", "success");
+      if (el.profileTargetPwd) el.profileTargetPwd.value = "";
+      await loadProfileUserListForDrawer();
+      if (id === currentUserId) await refreshSessionUserFromMe();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Falha ao atualizar usuário.", "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  el.formProfileNewUser?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (!currentUserIsAdmin) return;
+    const uname = (el.profileNewUsername?.value || "").trim();
+    const pwd = el.profileNewPwd?.value || "";
+    const isAdm = Boolean(el.profileNewAdmin?.checked);
+    if (uname.length < 1) {
+      toast("Informe o nome de usuário.", "error");
+      return;
+    }
+    if (pwd.length < 6) {
+      toast("A senha inicial deve ter pelo menos 6 caracteres.", "error");
+      return;
+    }
+    await fetchCsrf();
+    const btn = el.formProfileNewUser?.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await apiJson("/admin/users", {
+        method: "POST",
+        body: JSON.stringify({ username: uname, password: pwd, is_admin: isAdm }),
+      });
+      if (res.status === 401) {
+        window.location.replace("/login.html");
+        return;
+      }
+      if (res.status === 409) {
+        toast("Este nome de usuário já existe.", "error");
+        return;
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = `Erro ${res.status}`;
+        try {
+          const err = JSON.parse(text);
+          msg = formatApiDetail(err.detail) || text || msg;
+        } catch {
+          if (text) msg = text;
+        }
+        toast(msg, "error");
+        return;
+      }
+      toast("Usuário criado.", "success");
+      el.formProfileNewUser.reset();
+      if (el.profileNewAdmin) el.profileNewAdmin.checked = false;
+      await loadProfileUserListForDrawer();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Falha ao criar usuário.", "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  el.btnNotifClear?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    clearNotificationsFromPanel();
+  });
+
   el.btnLogout?.addEventListener("click", async () => {
+    /* Persistir separador; aba já vai em sessionStorage via setAppView (garante chave se nunca trocou de aba). */
+    if (selectedRobotId != null) persistSelectedRobotId(selectedRobotId);
+    try {
+      if (sessionStorage.getItem(LAST_APP_VIEW_KEY) == null) {
+        sessionStorage.setItem(LAST_APP_VIEW_KEY, "operacao");
+      }
+    } catch {
+      /* ignore */
+    }
     /* Não limpar emr-remedy-sim-jobs: após novo login, ensureRemedySimulationsRunning religa os ticks. */
     try {
       await fetch(`${API_BASE}/auth/logout`, { method: "POST", ...FETCH_CRED });
@@ -1916,7 +2913,32 @@
 
   el.tabOperacao?.addEventListener("click", () => setAppView("operacao"));
   el.tabHistorico?.addEventListener("click", () => setAppView("historico"));
+  el.tabRelatorio?.addEventListener("click", () => setAppView("relatorio"));
   el.tabLogs?.addEventListener("click", () => setAppView("logs"));
+  el.relatorioTabOs?.addEventListener("click", () => setRelatorioSubtab("os"));
+  el.relatorioTabSeparador?.addEventListener("click", () => setRelatorioSubtab("separador"));
+  el.formRelatorioOs?.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    void loadRelatorioOsList(true);
+  });
+  el.btnRelatorioOsLimpar?.addEventListener("click", () => {
+    clearRelatorioOsFilters();
+  });
+  el.relatorioSeparadorBusca?.addEventListener("input", () => {
+    renderRelatorioSeparadorList();
+  });
+  el.relatorioOsResult?.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-relatorio-os-page]");
+    if (!btn || btn.disabled) return;
+    const dir = btn.getAttribute("data-relatorio-os-page");
+    if (dir === "prev") {
+      relatorioOsPageOffset = Math.max(0, relatorioOsPageOffset - RELATORIO_OS_LIMIT);
+      void loadRelatorioOsList(false);
+    } else if (dir === "next") {
+      relatorioOsPageOffset += RELATORIO_OS_LIMIT;
+      void loadRelatorioOsList(false);
+    }
+  });
   el.btnLogsRefresh?.addEventListener("click", () => void loadAuditLogs());
 
   el.formLogsFilter?.addEventListener("submit", (ev) => {
@@ -2018,7 +3040,7 @@
       return;
     }
     el.btnHistoricoConsultar.disabled = true;
-    destroyHistoricoUnidadesChart();
+    destroyHistoricoCharts();
     el.historicoResult.innerHTML =
       '<p class="historico-empty" role="status">Consultando…</p>';
     try {
@@ -2128,6 +3150,16 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    if (isProfileDrawerOpen()) {
+      e.preventDefault();
+      closeProfileDrawer();
+      return;
+    }
+    if (isNotifPanelOpen()) {
+      e.preventDefault();
+      setNotifPanelOpen(false);
+      return;
+    }
     if (!el.editModal.hidden) {
       e.preventDefault();
       closeEditModal();
@@ -2166,6 +3198,7 @@
   async function boot() {
     initThemeToggle();
     initHistoricoDefaultDates();
+    initRelatorioSubtabs();
     initLogsPerPageFromStorage();
     try {
       const me = await fetch(`${API_BASE}/auth/me`, FETCH_CRED);
@@ -2176,7 +3209,11 @@
       if (!me.ok) throw new Error("Falha ao verificar sessão.");
       const meData = await me.json();
       applyAdminUiFromSession(meData.user?.is_admin);
+      currentUserId = meData.user?.id != null ? Number(meData.user.id) : null;
+      currentUsername = meData.user?.username != null ? String(meData.user.username) : "";
       await fetchCsrf();
+      void fetchNotifications();
+      ensureNotificationsPoll();
       try {
         const raw = sessionStorage.getItem(SELECTED_ROBOT_KEY);
         if (raw != null) {
@@ -2187,6 +3224,16 @@
         /* ignore */
       }
       await loadRobots();
+      const restore = readLastAppView();
+      if (restore === "historico" || restore === "relatorio" || restore === "logs") {
+        setAppView(restore);
+      } else if (restore == null) {
+        try {
+          sessionStorage.setItem(LAST_APP_VIEW_KEY, "operacao");
+        } catch {
+          /* ignore */
+        }
+      }
     } catch (e) {
       el.connStatus.textContent = "Erro";
       el.connStatus.className = "badge badge--error";
