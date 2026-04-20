@@ -398,10 +398,6 @@
         >
           <div class="historico-head">
             <h2 class="panel__title historico-title">Histórico por separador</h2>
-            <p class="historico-lede">
-              Escolha o separador e o intervalo de datas para ver OS concluídas, canceladas, com pausa,
-              unidades empacotadas e outros indicadores.
-            </p>
           </div>
           <form id="form-historico" class="historico-form">
             <label class="field">
@@ -434,47 +430,13 @@
           role="tabpanel"
           aria-labelledby="tab-relatorio"
         >
-          <div class="historico-head">
+          <div class="historico-head historico-head--relatorio">
             <h2 class="panel__title historico-title">Relatório</h2>
-            <p class="historico-lede">
-              Escolha o tipo de relatório: detalhamento por ordem de serviço ou visão consolidada por separador.
-            </p>
-          </div>
-          <div class="relatorio-subtabs" role="tablist" aria-label="Tipo de relatório">
-            <button
-              type="button"
-              class="relatorio-subtab relatorio-subtab--active"
-              id="relatorio-tab-os"
-              role="tab"
-              aria-selected="true"
-              aria-controls="relatorio-panel-os"
-              data-relatorio-subtab="os"
-            >
-              Por OS
-            </button>
-            <button
-              type="button"
-              class="relatorio-subtab"
-              id="relatorio-tab-separador"
-              role="tab"
-              aria-selected="false"
-              aria-controls="relatorio-panel-separador"
-              tabindex="-1"
-              data-relatorio-subtab="separador"
-            >
-              Por Separador
+            <button type="button" class="btn btn--secondary" id="btn-relatorio-batch-open">
+              Gerar relatórios
             </button>
           </div>
-          <div
-            class="relatorio-tabpanel"
-            id="relatorio-panel-os"
-            role="tabpanel"
-            aria-labelledby="relatorio-tab-os"
-          >
-            <p class="historico-lede relatorio-os-lede">
-              Ordens encerradas (concluídas ou canceladas). Opcional: restrinja por intervalo de datas (evento no calendário
-              de Brasília).
-            </p>
+          <div class="relatorio-tabpanel" id="relatorio-panel-os" aria-labelledby="tab-relatorio">
             <form id="form-relatorio-os" class="historico-form relatorio-os-form" aria-label="Filtro do relatório por OS">
               <div class="relatorio-os-toolbar">
                 <div class="relatorio-os-filters-grid">
@@ -492,7 +454,7 @@
                   </label>
                   <label class="field">
                     <span class="field__label">Cliente</span>
-                    <input type="search" id="relatorio-os-cliente" name="cliente" maxlength="256" autocomplete="off" placeholder="Trecho do nome do cliente" />
+                    <input type="search" id="relatorio-os-cliente" name="cliente" maxlength="256" autocomplete="off" placeholder="Trecho no nome…" />
                   </label>
                   <label class="field">
                     <span class="field__label">Situação</span>
@@ -530,38 +492,8 @@
                   <button type="submit" class="btn btn--primary" id="btn-relatorio-os-consultar">Consultar</button>
                 </div>
               </div>
-              <p class="field__hint" id="relatorio-os-dates-hint">
-                Datas em branco = todo o histórico. O campo Cliente busca por trecho no nome do cliente. Os demais filtros
-                combinam com E.
-              </p>
             </form>
             <div id="relatorio-os-result" class="relatorio-os-result" aria-live="polite"></div>
-          </div>
-          <div
-            class="relatorio-tabpanel hidden"
-            id="relatorio-panel-separador"
-            role="tabpanel"
-            aria-labelledby="relatorio-tab-separador"
-            hidden
-          >
-            <p class="historico-lede relatorio-os-lede">
-              Separadores cadastrados no sistema. Para indicadores por período, use o <strong>Histórico</strong> com o
-              separador desejado.
-            </p>
-            <div class="relatorio-separador-toolbar">
-              <label class="field relatorio-separador-toolbar__field">
-                <span class="field__label">Buscar por nome</span>
-                <input
-                  type="search"
-                  id="relatorio-separador-busca"
-                  maxlength="128"
-                  autocomplete="off"
-                  placeholder="Nome do separador"
-                  aria-label="Filtrar lista por nome do separador"
-                />
-              </label>
-            </div>
-            <div id="relatorio-separador-result" class="relatorio-separador-result" aria-live="polite"></div>
           </div>
         </section>
 
@@ -574,9 +506,6 @@
           <div class="logs-head">
             <div class="logs-head__text">
               <h2 class="panel__title historico-title">Logs de auditoria</h2>
-              <p class="logs-head__lede">
-                Registros de ações no sistema. Limpar remove todas as linhas do banco de dados
-              </p>
             </div>
             <div class="logs-head__actions">
               <button type="button" class="btn btn--ghost btn--small" id="btn-logs-refresh">Atualizar</button>
@@ -599,7 +528,7 @@
             </label>
             <label class="field logs-filter__field">
               <span class="field__label">Categoria</span>
-              <select id="logs-filter-category" name="category" aria-describedby="logs-filter-hint">
+              <select id="logs-filter-category" name="category">
                 <option value="">Todas</option>
                 <option value="historico">Histórico (consulta por separador)</option>
                 <option value="cancelamento">Cancelamento de OS</option>
@@ -620,21 +549,10 @@
               <span class="field__label">Data final</span>
               <input type="date" id="logs-filter-ate" name="ate" autocomplete="off" />
             </label>
-            <label class="field logs-filter__field">
-              <span class="field__label">Por página</span>
-              <select id="logs-per-page" name="per_page" aria-describedby="logs-filter-hint">
-                <option value="20">20</option>
-                <option value="50" selected>50</option>
-                <option value="100">100</option>
-              </select>
-            </label>
             <div class="logs-filter__actions">
               <button type="submit" class="btn btn--primary btn--small" id="btn-logs-filter">Filtrar</button>
               <button type="button" class="btn btn--ghost btn--small" id="btn-logs-filter-clear">Limpar filtros</button>
             </div>
-            <p class="logs-filter__hint" id="logs-filter-hint">
-              Intervalo pela data/hora do registro (UTC). Escolha quantos registros listar por vez (20, 50 ou 100); com mais páginas, use Anterior/Próxima abaixo da tabela.
-            </p>
           </form>
           <div id="logs-result" class="logs-result" aria-live="polite"></div>
         </section>
@@ -709,6 +627,150 @@
         <div class="modal__actions">
           <button type="button" class="btn btn--ghost" id="clear-logs-modal-cancel">Cancelar</button>
           <button type="button" class="btn btn--danger" id="clear-logs-modal-confirm">Limpar tudo</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal"
+      id="relatorio-os-export-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="relatorio-os-export-title"
+    >
+      <button type="button" class="modal__backdrop" data-relatorio-os-export-dismiss aria-label="Fechar"></button>
+      <div class="modal__panel modal__panel--relatorio-export">
+        <h2 id="relatorio-os-export-title" class="modal__title">Gerar relatório</h2>
+        <div
+          class="relatorio-os-export-formats"
+          role="radiogroup"
+          aria-labelledby="relatorio-os-export-format-label"
+        >
+          <p id="relatorio-os-export-format-label" class="relatorio-os-export-formats__label">
+            Formato do arquivo
+          </p>
+          <div class="relatorio-os-export-formats__grid">
+            <button
+              type="button"
+              class="relatorio-os-export-format-btn"
+              data-relatorio-export-format="pdf"
+              role="radio"
+              aria-checked="false"
+            >
+              <span class="relatorio-os-export-format-btn__name">PDF</span>
+            </button>
+            <button
+              type="button"
+              class="relatorio-os-export-format-btn"
+              data-relatorio-export-format="csv"
+              role="radio"
+              aria-checked="false"
+            >
+              <span class="relatorio-os-export-format-btn__name">CSV</span>
+            </button>
+            <button
+              type="button"
+              class="relatorio-os-export-format-btn"
+              data-relatorio-export-format="xlsx"
+              role="radio"
+              aria-checked="false"
+            >
+              <span class="relatorio-os-export-format-btn__name">Excel</span>
+            </button>
+          </div>
+        </div>
+        <div class="modal__actions modal__actions--relatorio-export">
+          <button type="button" class="btn btn--ghost" id="relatorio-os-export-cancel" data-relatorio-os-export-dismiss>
+            Cancelar
+          </button>
+          <button type="button" class="btn btn--primary" id="relatorio-os-export-confirm" disabled>
+            Concluir
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal"
+      id="relatorio-batch-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="relatorio-batch-title"
+    >
+      <button type="button" class="modal__backdrop" data-relatorio-batch-dismiss aria-label="Fechar"></button>
+      <div class="modal__panel modal__panel--relatorio-batch">
+        <h2 id="relatorio-batch-title" class="modal__title">Gerar relatórios</h2>
+        <div class="relatorio-batch-filters historico-form relatorio-os-form" role="group" aria-label="Filtros do lote">
+          <div class="relatorio-os-filters-grid">
+            <label class="field">
+              <span class="field__label">Data inicial</span>
+              <input type="date" id="relatorio-batch-de" />
+            </label>
+            <label class="field">
+              <span class="field__label">Data final</span>
+              <input type="date" id="relatorio-batch-ate" />
+            </label>
+            <label class="field">
+              <span class="field__label">OS (código)</span>
+              <input type="search" id="relatorio-batch-filtro-os" maxlength="64" autocomplete="off" placeholder="Contém…" />
+            </label>
+            <label class="field">
+              <span class="field__label">Cliente</span>
+              <input type="search" id="relatorio-batch-cliente" maxlength="256" autocomplete="off" placeholder="Trecho no nome…" />
+            </label>
+            <label class="field">
+              <span class="field__label">Situação</span>
+              <select id="relatorio-batch-situacao" aria-label="Filtrar por situação">
+                <option value="">Todas</option>
+                <option value="concluida">Concluída</option>
+                <option value="cancelada">Cancelada</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">Separador (nome)</span>
+              <input type="search" id="relatorio-batch-nome-separador" maxlength="128" autocomplete="off" placeholder="Nome do robô" />
+            </label>
+            <label class="field">
+              <span class="field__label">Separador (código)</span>
+              <input type="search" id="relatorio-batch-codigo-separador" maxlength="32" autocomplete="off" placeholder="Código do robô" />
+            </label>
+          </div>
+        </div>
+        <div id="relatorio-batch-preview" class="relatorio-batch-preview" aria-live="polite"></div>
+        <div
+          class="relatorio-os-export-formats relatorio-batch-formats"
+          role="radiogroup"
+          aria-labelledby="relatorio-batch-format-label"
+        >
+          <p id="relatorio-batch-format-label" class="relatorio-os-export-formats__label">Formato do relatório</p>
+          <div class="relatorio-os-export-formats__grid relatorio-batch-formats__grid">
+            <button
+              type="button"
+              class="relatorio-os-export-format-btn relatorio-batch-format-btn"
+              data-relatorio-batch-format="csv"
+              role="radio"
+              aria-checked="true"
+            >
+              <span class="relatorio-os-export-format-btn__name">CSV</span>
+            </button>
+            <button
+              type="button"
+              class="relatorio-os-export-format-btn relatorio-batch-format-btn"
+              data-relatorio-batch-format="xlsx"
+              role="radio"
+              aria-checked="false"
+            >
+              <span class="relatorio-os-export-format-btn__name">Excel</span>
+            </button>
+          </div>
+        </div>
+        <div class="modal__actions modal__actions--relatorio-export">
+          <button type="button" class="btn btn--ghost" id="relatorio-batch-cancel" data-relatorio-batch-dismiss>
+            Cancelar
+          </button>
+          <button type="button" class="btn btn--primary" id="relatorio-batch-download">Baixar</button>
         </div>
       </div>
     </div>

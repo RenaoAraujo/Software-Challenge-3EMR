@@ -106,6 +106,7 @@ class ServiceOrderRepository:
         cliente_contains: str | None = None,
         nome_separador_contains: str | None = None,
         codigo_separador_contains: str | None = None,
+        restrict_ids: list[int] | None = None,
     ) -> tuple[list[ServiceOrder], int]:
         """OS concluídas ou canceladas (com data de evento); mais recentes primeiro."""
         completed_cond = and_(
@@ -196,6 +197,9 @@ class ServiceOrderRepository:
                 ),
             )
             base = and_(base, sep_cod)
+
+        if restrict_ids is not None and len(restrict_ids) > 0:
+            base = and_(base, ServiceOrder.id.in_(tuple(restrict_ids)))
 
         sort_col = case(
             (ServiceOrder.status == ServiceOrderStatus.COMPLETED.value, ServiceOrder.completed_at),

@@ -4,7 +4,7 @@ import enum
 import json
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -95,6 +95,12 @@ class ServiceOrder(Base):
         index=True,
     )
     cancelled_by_robot_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    cancelled_separated_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cancelled_avg_seconds_per_unit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cancel_error_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancel_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Duração total (atribuição → cancelamento), em segundos; gravada no cancelamento antes de limpar assigned_at.
+    cancelled_wall_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

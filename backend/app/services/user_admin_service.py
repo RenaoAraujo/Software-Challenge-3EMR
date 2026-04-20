@@ -37,7 +37,10 @@ def admin_update_user(
     if is_admin is False and target.is_admin:
         cnt = db.scalar(select(func.count()).select_from(User).where(User.is_admin.is_(True)))
         if (cnt or 0) <= 1:
-            raise ValueError("Não é possível remover o último administrador.")
+            raise ValueError(
+                "Enquanto houver apenas um administrador, não é possível remover esse perfil. "
+                "É necessário pelo menos dois administradores no sistema."
+            )
 
     if new_password is not None:
         target.password_hash = AuthService.hash_password(new_password)

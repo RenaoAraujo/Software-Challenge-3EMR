@@ -42,3 +42,10 @@ class RobotRepository:
             return {}
         stmt = select(Robot.id, Robot.name).where(Robot.id.in_(id_list))
         return {int(row[0]): str(row[1]) for row in self._db.execute(stmt).all()}
+
+    def get_codes_by_ids(self, ids: Iterable[int]) -> dict[int, str]:
+        id_list = list({i for i in ids if i is not None})
+        if not id_list:
+            return {}
+        stmt = select(Robot.id, Robot.code).where(Robot.id.in_(id_list))
+        return {int(row[0]): str(row[1]) for row in self._db.execute(stmt).all()}

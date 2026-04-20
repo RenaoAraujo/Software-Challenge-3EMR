@@ -13,6 +13,21 @@ class ManualOrderCreate(BaseModel):
     quantidade_remedios: int = Field(..., ge=1, le=500)
 
 
+class MedicineReportLine(BaseModel):
+    """Uma linha de medicamento no export (lista da OS, ordem = coleta)."""
+
+    remedio_id: str = ""
+    remedio: str = ""
+    tipo_remedio: str = ""
+    classe_remedio: str = ""
+    numero: int = 0
+    tempo_gasto: str = ""
+    situacao_coleta: Literal["concluida", "cancelada"] = Field(
+        default="concluida",
+        description="Por remédio: coleta individual concluída ou não (coluna «Status do Remédio» no export).",
+    )
+
+
 class ServiceOrderOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,10 +51,53 @@ class OrderReportItem(BaseModel):
         default=None,
         description="Nome do separador (snapshot ou cadastro atual).",
     )
-    unidades_totais: int = Field(ge=0, description="Unidades concluídas (se concluída) ou previstas (se cancelada).")
+    quantidade_total: int = Field(ge=0, description="Unidades previstas (meta) da OS.")
+    quantidade_separada: int = Field(ge=0, description="Unidades separadas ao encerrar.")
+    tempo_medio_por_remedio: str = Field(
+        default="",
+        description="Tempo médio por unidade, texto tipo «X min Y s», ou vazio.",
+    )
+    unidades_totais: int = Field(
+        ge=0,
+        description="Compat.: igual a quantidade_separada (unidades ao encerrar).",
+    )
     situacao: Literal["concluida", "cancelada"]
+    erro_descricao: str = Field(default="", description="Preenchido se a OS foi cancelada e houver registro.")
+    erro_codigo: str = Field(default="", description="Preenchido se a OS foi cancelada e houver registro.")
+    medicine_lines: list[MedicineReportLine] = Field(
+        default_factory=list,
+        description="Itens da OS para exportação (ordem de coleta).",
+    )
+    numero_pausas: int = Field(default=0, ge=0)
+    separador_codigo: str = Field(default="", description="Código do separador no cadastro.")
+    porcentagem_conclusao: str = Field(
+        default="",
+        description="Percentual separado/previsto, formato pt-BR (ex.: 87,5%).",
+    )
+    tempo_total_separacao: str = Field(
+        default="",
+        description="Duração total atribuição → encerramento, texto tipo «X min Y s».",
+    )
 
 
 class OrdersReportResponse(BaseModel):
     total: int = Field(ge=0, description="Total de linhas que batem o filtro (não só esta página).")
     items: list[OrderReportItem] = Field(default_factory=list)
+
+
+class ExportBatchRequest(BaseModel):
+    """Corpo do export em lote (POST): filtros iguais ao relatório; `order_ids` opcional restringe as ordens."""
+
+    format: Literal["csv", "xlsx"]
+    de: date | None = None
+    ate: date | None = None
+    os: str | None = Field(None, max_length=64)
+    nome: str | None = Field(None, max_length=128)
+    cliente: str | None = Field(None, max_length=256)
+    nome_separador: str | None = Field(None, max_length=128)
+    codigo_separador: str | None = Field(None, max_length=32)
+    situacao: str | None = None
+    order_ids: list[int] | None = Field(
+        None,
+        description="Se preenchido, exporta só estes IDs (intersecção com o filtro). Omitir para todas as ordens do filtro.",
+    )

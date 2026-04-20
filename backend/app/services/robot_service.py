@@ -171,10 +171,28 @@ class RobotService:
         order = robot.current_order
         now = datetime.now(UTC)
         if order is not None:
+            u_sep = max(0, int(robot.units_separated or 0))
+            order.cancelled_separated_units = u_sep
+            order.cancelled_avg_seconds_per_unit = None
+            if order.assigned_at is not None and u_sep > 0:
+                a = order.assigned_at
+                if a.tzinfo is None:
+                    a = a.replace(tzinfo=UTC)
+                delta = (now - a).total_seconds()
+                if delta >= 0:
+                    order.cancelled_avg_seconds_per_unit = round(delta / u_sep, 1)
             order.status = ServiceOrderStatus.CANCELLED.value
             order.cancelled_at = now
             order.cancelled_by_robot_id = robot_id
             order.cancelled_by_robot_name = (robot.name or "").strip() or None
+            if order.assigned_at is not None:
+                a = order.assigned_at
+                if a.tzinfo is None:
+                    a = a.replace(tzinfo=UTC)
+                wall = (now - a).total_seconds()
+                order.cancelled_wall_seconds = max(0, int(wall)) if wall >= 0 else None
+            else:
+                order.cancelled_wall_seconds = None
             order.assigned_at = None
             order.completed_at = None
             order.completed_by_robot_id = None

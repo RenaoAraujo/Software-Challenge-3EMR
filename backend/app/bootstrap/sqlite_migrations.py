@@ -47,6 +47,16 @@ def apply_sqlite_migrations(conn: Connection) -> None:
         conn.execute(text("ALTER TABLE service_orders ADD COLUMN completed_by_robot_name VARCHAR(128)"))
     if "cancelled_by_robot_name" not in so_cols:
         conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_by_robot_name VARCHAR(128)"))
+    if "cancelled_separated_units" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_separated_units INTEGER"))
+    if "cancelled_avg_seconds_per_unit" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_avg_seconds_per_unit REAL"))
+    if "cancel_error_description" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancel_error_description TEXT"))
+    if "cancel_error_code" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancel_error_code VARCHAR(64)"))
+    if "cancelled_wall_seconds" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_wall_seconds INTEGER"))
 
     user_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(users)")).fetchall()}
     if "is_admin" not in user_cols:
