@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Relatório — {{ os_code }}</title>
+    <style>
+      @page {
+        size: A4 portrait;
+        margin: 14mm 12mm 16mm 12mm;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: DejaVu Sans, Helvetica, Arial, sans-serif;
+        font-size: 9.5pt;
+        line-height: 1.35;
+        color: #1a1a1a;
+        margin: 0;
+        padding: 0;
+      }
+      .pdf-doc-header {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0 0 4mm 0;
+        padding-bottom: 3mm;
+        border-bottom: 2pt solid #1e3a5f;
+      }
+      /* Esquerda: metadados alinhados à esquerda da página */
+      .pdf-doc-header__emit {
+        width: 52%;
+        vertical-align: top;
+        text-align: left;
+        padding: 0 4mm 0 0;
+      }
+      /* Direita: faixa azul + logos encostados à direita */
+      .pdf-doc-header__logos {
+        width: 48%;
+        vertical-align: middle;
+        text-align: right;
+        padding: 0 0 0 2mm;
+      }
+      .pdf-logos-strip {
+        background-color: #005a9c;
+        background-image: linear-gradient(120deg, #005a9c 0%, #003c78 100%);
+        padding: 3.5mm 4mm;
+        border-radius: 3mm;
+        display: inline-block;
+        max-width: 100%;
+        text-align: left;
+      }
+      .pdf-logos-row {
+        border-collapse: collapse;
+      }
+      .pdf-logos-row td {
+        vertical-align: middle;
+        padding: 0 3.5mm 0 0;
+      }
+      .pdf-logos-row td:last-child {
+        padding-right: 0;
+      }
+      .pdf-logo-img {
+        display: block;
+        height: 11mm;
+        width: auto;
+        max-width: 42mm;
+      }
+      .pdf-emit-stack {
+        text-align: left;
+        font-size: 8.5pt;
+        line-height: 1.45;
+        color: #1a1a1a;
+        width: 100%;
+      }
+      .pdf-emit-row {
+        margin: 0 0 2mm 0;
+      }
+      .pdf-emit-row:last-child {
+        margin-bottom: 0;
+      }
+      .pdf-emit-k {
+        font-size: 7.5pt;
+        font-weight: 600;
+        color: #475569;
+      }
+      .pdf-emit-v {
+        font-size: 9.5pt;
+        font-weight: bold;
+        color: #111;
+      }
+      /* Cabeçalho: status sempre preto (evita herança/estilos de “status ok” no motor PDF). */
+      .pdf-header-status-value {
+        color: #111111 !important;
+      }
+      .doc-title {
+        font-size: 12.5pt;
+        font-weight: bold;
+        margin: 3mm 0 4mm 0;
+        color: #1e3a5f;
+        text-align: left;
+      }
+      /* Mesmo padrão do cabeçalho (pdf-emit-k / pdf-emit-v), com mais espaço entre linhas. */
+      .pdf-os-info-stack {
+        text-align: left;
+        font-size: 8.5pt;
+        line-height: 1.45;
+        color: #1a1a1a;
+        width: 100%;
+        margin: 0 0 5mm 0;
+      }
+      .pdf-os-info-stack .pdf-emit-row {
+        margin: 0 0 4.5mm 0;
+      }
+      .pdf-os-info-stack .pdf-emit-row:last-child {
+        margin-bottom: 0;
+      }
+      .pdf-os-info-grid {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0 0 5mm 0;
+        table-layout: fixed;
+      }
+      .pdf-os-info-grid__cell {
+        width: 50%;
+        vertical-align: top;
+        padding: 0;
+      }
+      .pdf-os-info-grid__cell:first-child {
+        padding-right: 3mm;
+      }
+      .pdf-os-info-grid__cell:last-child {
+        padding-left: 3mm;
+      }
+      .doc-title--section {
+        margin-top: 6mm;
+      }
+      .footer-meta {
+        margin-top: 5mm;
+        padding-top: 3mm;
+        border-top: 0.5pt solid #ccc;
+        font-size: 8pt;
+        color: #555;
+      }
+      .erro-box {
+        margin: 3mm 0;
+        padding: 2.5mm 3mm;
+        background: #fff5f5;
+        border: 0.5pt solid #e8b4b4;
+        font-size: 8.5pt;
+      }
+      .muted {
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <table class="pdf-doc-header">
+      <tr>
+        <td class="pdf-doc-header__emit">
+          <div class="pdf-emit-stack">
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Emitido por:</span>
+              <span class="pdf-emit-v">{{ exportado_por or "—" }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Data de emissão:</span>
+              <span class="pdf-emit-v">{{ data_exportacao }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Status O.S:</span>
+              <span class="pdf-emit-v pdf-header-status-value">{{ status_label }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Nº OS:</span>
+              <span class="pdf-emit-v">{{ os_code }}</span>
+            </div>
+          </div>
+        </td>
+        <td class="pdf-doc-header__logos">
+          <div class="pdf-logos-strip">
+            {% if has_pdf_logos %}
+            <table class="pdf-logos-row" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <img class="pdf-logo-img" src="{{ logo_softtek_src | safe }}" alt="Softtek" />
+                </td>
+                <td>
+                  <img class="pdf-logo-img" src="{{ logo_apsen_src | safe }}" alt="Apsen" />
+                </td>
+              </tr>
+            </table>
+            {% else %}
+            <span style="font-size: 8pt; color: #cfe8ff">Logos indisponíveis</span>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <h1 class="doc-title">Informações da OS</h1>
+
+    <table class="pdf-os-info-grid" cellpadding="0" cellspacing="0">
+      <tr>
+        <td class="pdf-os-info-grid__cell">
+          <div class="pdf-os-info-stack pdf-emit-stack">
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Data da OS:</span>
+              <span class="pdf-emit-v">{{ data_fmt }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Número da OS:</span>
+              <span class="pdf-emit-v">{{ os_code }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Cliente:</span>
+              <span class="pdf-emit-v">{{ client_name or "—" }}</span>
+            </div>
+          </div>
+        </td>
+        <td class="pdf-os-info-grid__cell">
+          <div class="pdf-os-info-stack pdf-emit-stack">
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Código do robô:</span>
+              <span class="pdf-emit-v">{{ robot_codigo_txt }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Nome do separador:</span>
+              <span class="pdf-emit-v">{{ nome_separador }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Quantidade total:</span>
+              <span class="pdf-emit-v">{{ quantidade_total }}</span>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <h1 class="doc-title doc-title--section">Relatório de Serviço Realizado</h1>
+
+    <table class="pdf-os-info-grid" cellpadding="0" cellspacing="0">
+      <tr>
+        <td class="pdf-os-info-grid__cell">
+          <div class="pdf-os-info-stack pdf-emit-stack">
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Status de conclusão:</span>
+              <span class="pdf-emit-v pdf-header-status-value">{{ status_label }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Quantidade separada:</span>
+              <span class="pdf-emit-v">{{ quantidade_separada }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Porcentagem de conclusão:</span>
+              <span class="pdf-emit-v">{{ porcentagem_conclusao or "—" }}</span>
+            </div>
+          </div>
+        </td>
+        <td class="pdf-os-info-grid__cell">
+          <div class="pdf-os-info-stack pdf-emit-stack">
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Tempo total da separação:</span>
+              <span class="pdf-emit-v">{{ tempo_total_separacao or "—" }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Tempo médio por remédio:</span>
+              <span class="pdf-emit-v">{{ tempo_medio_por_remedio or "—" }}</span>
+            </div>
+            <div class="pdf-emit-row">
+              <span class="pdf-emit-k">Número de pausas:</span>
+              <span class="pdf-emit-v">{{ numero_pausas }}</span>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    {% if situacao == "cancelada" and (erro_descricao or erro_codigo) %}
+    <div class="erro-box">
+      <strong>Registo de erro (cancelamento):</strong>
+      {% if erro_descricao %}<br />{{ erro_descricao }}{% endif %}
+      {% if erro_codigo %}<br /><span class="muted">Código: {{ erro_codigo }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="footer-meta">
+      <p style="margin: 0; font-style: italic">Documento gerado pelo sistema EMR — folha A4.</p>
+    </div>
+  </body>
+</html>

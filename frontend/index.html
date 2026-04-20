@@ -53,8 +53,8 @@
               type="button"
               class="header-notif__btn"
               id="btn-notifications"
-              title="Conclusões de OS"
-              aria-label="Notificações — ordens de serviço concluídas"
+              title="Conclusões e cancelamentos de OS"
+              aria-label="Notificações — ordens de serviço concluídas ou canceladas"
               aria-expanded="false"
               aria-haspopup="true"
               aria-controls="notif-panel"
@@ -82,11 +82,11 @@
               class="header-notif__panel"
               id="notif-panel"
               role="region"
-              aria-label="Conclusões recentes de ordens de serviço"
+              aria-label="Conclusões e cancelamentos recentes de ordens de serviço"
               hidden
             >
               <div class="header-notif__toolbar">
-                <p class="header-notif__title">OS concluídas</p>
+                <p class="header-notif__title">OS concluídas e canceladas</p>
                 <button
                   type="button"
                   class="header-notif__clear"
@@ -456,36 +456,6 @@
                     <span class="field__label">Cliente</span>
                     <input type="search" id="relatorio-os-cliente" name="cliente" maxlength="256" autocomplete="off" placeholder="Trecho no nome…" />
                   </label>
-                  <label class="field">
-                    <span class="field__label">Situação</span>
-                    <select id="relatorio-os-situacao" name="situacao" aria-label="Filtrar por situação">
-                      <option value="">Todas</option>
-                      <option value="concluida">Concluída</option>
-                      <option value="cancelada">Cancelada</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Separador (nome)</span>
-                    <input
-                      type="search"
-                      id="relatorio-os-nome-separador"
-                      name="nome_separador"
-                      maxlength="128"
-                      autocomplete="off"
-                      placeholder="Nome do robô"
-                    />
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Separador (código)</span>
-                    <input
-                      type="search"
-                      id="relatorio-os-codigo-separador"
-                      name="codigo_separador"
-                      maxlength="32"
-                      autocomplete="off"
-                      placeholder="Código do robô"
-                    />
-                  </label>
                 </div>
                 <div class="relatorio-os-toolbar__actions">
                   <button type="button" class="btn btn--ghost" id="btn-relatorio-os-limpar">Limpar filtros</button>
@@ -738,6 +708,11 @@
             </label>
           </div>
         </div>
+        <div class="relatorio-batch-bulk-actions">
+          <button type="button" class="btn btn--ghost btn--small" id="btn-relatorio-batch-include-all-filter">
+            Incluir todas as ordens do filtro atual
+          </button>
+        </div>
         <div id="relatorio-batch-preview" class="relatorio-batch-preview" aria-live="polite"></div>
         <div
           class="relatorio-os-export-formats relatorio-batch-formats"
@@ -920,7 +895,8 @@
         <h2 id="manual-os-modal-title" class="modal__title">Nova OS manual (teste)</h2>
         <p id="manual-os-modal-desc" class="modal__text modal__text--lede">
           Crie uma ordem com número, cliente e quantidade de remédios; escolha o separador
-          <strong>ocioso (idle)</strong>. Opcional: simular 1 unidade a cada 3 segundos.
+          <strong>ocioso (idle)</strong>. Se o número for de uma OS já <strong>cancelada</strong>, o sistema
+          pergunta se o separador continua de onde parou ou refaz o pedido. Opcional: simular 1 unidade a cada 3 s.
         </p>
         <form id="form-manual-os" class="form-stack modal__form">
           <label class="field">
@@ -953,6 +929,31 @@
             <button type="submit" class="btn btn--primary" id="btn-manual-os-submit">Criar e enviar OS</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div
+      class="modal"
+      id="manual-os-reopen-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="manual-os-reopen-title"
+      aria-describedby="manual-os-reopen-desc"
+    >
+      <button type="button" class="modal__backdrop" id="manual-os-reopen-backdrop" aria-label="Fechar"></button>
+      <div class="modal__panel modal__panel--form">
+        <h2 id="manual-os-reopen-title" class="modal__title">OS cancelada com o mesmo número</h2>
+        <p id="manual-os-reopen-desc" class="modal__text modal__text--lede">
+          Esta OS já existiu e foi <strong>cancelada</strong>. Ao concluir de novo, os dados novos substituem o registro
+          anterior. Como deve o separador proceder?
+        </p>
+        <p class="modal__text" id="manual-os-reopen-stats" hidden></p>
+        <div class="modal__actions modal__actions--form modal__actions--wrap">
+          <button type="button" class="btn btn--ghost" id="manual-os-reopen-dismiss">Voltar</button>
+          <button type="button" class="btn btn--secondary" id="manual-os-reopen-restart">Refazer tudo</button>
+          <button type="button" class="btn btn--primary" id="manual-os-reopen-resume">Continuar de onde parou</button>
+        </div>
       </div>
     </div>
 

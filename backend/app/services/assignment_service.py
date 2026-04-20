@@ -15,13 +15,23 @@ class AssignmentError(Exception):
         self.code = code
 
 
+class CancelledOsReuseRequired(Exception):
+    """Cliente deve escolher retomar ou refazer; exposto como HTTP 409 com detalhe estruturado."""
+
+    def __init__(self, *, cancelled_separated_units: int, expected_units: int) -> None:
+        self.cancelled_separated_units = cancelled_separated_units
+        self.expected_units = expected_units
+
+
 class AssignmentService:
     def __init__(self, db: Session) -> None:
         self._db = db
         self._robots = RobotRepository(db)
         self._orders = ServiceOrderRepository(db)
 
-    def assign_order_to_robot(self, robot_id: int, service_order_id: int) -> None:
+    def assign_order_to_robot(
+        self, robot_id: int, service_order_id: int, *, resume_units: int = 0
+    ) -> None:
         robot = self._robots.get_by_id(robot_id)
         if robot is None:
             raise AssignmentError("Robô não encontrado.", "robot_not_found")
@@ -82,6 +92,12 @@ class AssignmentService:
         robot.paused_at = None
         robot.elapsed_pause_seconds = 0
         robot.units_separated = 0
+        cap = max(0, int(order.expected_units or 0))
+        ru = max(0, int(resume_units))
+        if cap > 0:
+            robot.units_separated = min(ru, cap)
+        elif ru > 0:
+            robot.units_separated = ru
         robot.status = RobotStatus.RUNNING.value
         order.status = ServiceOrderStatus.IN_PROGRESS.value
         order.assigned_at = now
@@ -91,12 +107,70 @@ class AssignmentService:
         self._db.add(order)
         self._db.commit()
 
+    def _strip_cancel_snapshot(self, order: ServiceOrder) -> None:
+        order.cancelled_at = None
+        order.cancelled_by_robot_id = None
+        order.cancelled_by_robot_name = None
+        order.cancelled_separated_units = None
+        order.cancelled_avg_seconds_per_unit = None
+        order.cancelled_wall_seconds = None
+        order.cancel_error_description = None
+        order.cancel_error_code = None
+        order.status = ServiceOrderStatus.PENDING.value
+
+    def _reactivate_cancelled_manual_order(
+        self,
+        order: ServiceOrder,
+        robot_id: int,
+        client_name: str,
+        quantidade_remedios: int,
+        reopen_mode: str | None,
+    ) -> ServiceOrder:
+        saved_u = max(0, int(order.cancelled_separated_units or 0))
+        expected = max(0, int(order.expected_units or 0))
+
+        if reopen_mode is None:
+            raise CancelledOsReuseRequired(
+                cancelled_separated_units=saved_u,
+                expected_units=expected,
+            )
+
+        if reopen_mode not in ("resume", "restart"):
+            raise AssignmentError("Modo de reabertura inválido.", "invalid_reopen_mode")
+
+        self._strip_cancel_snapshot(order)
+
+        if reopen_mode == "restart":
+            meds = [f"Medicamento (teste) {i + 1}" for i in range(quantidade_remedios)]
+            order.client_name = (client_name or "").strip()
+            order.expected_units = quantidade_remedios
+            order.medicines_json = json.dumps(meds, ensure_ascii=False)
+            order.description = "OS manual — teste"
+            resume = 0
+        else:
+            if quantidade_remedios != int(order.expected_units or 0):
+                raise AssignmentError(
+                    "Para retomar de onde parou, mantenha a mesma quantidade de remédios "
+                    "da OS cancelada.",
+                    "resume_qty_mismatch",
+                )
+            order.client_name = (client_name or "").strip()
+            resume = saved_u
+
+        self._db.add(order)
+        self._db.flush()
+
+        self.assign_order_to_robot(robot_id, order.id, resume_units=resume)
+        self._db.refresh(order)
+        return order
+
     def create_manual_order_and_assign(
         self,
         robot_id: int,
         os_code: str,
         client_name: str,
         quantidade_remedios: int,
+        reopen_cancelled: str | None = None,
     ) -> ServiceOrder:
         """Cria uma OS de teste com itens sintéticos e já envia ao separador."""
         code = (os_code or "").strip()
@@ -107,6 +181,14 @@ class AssignmentService:
 
         dup = self._db.scalar(select(ServiceOrder).where(ServiceOrder.os_code == code))
         if dup is not None:
+            if dup.status == ServiceOrderStatus.CANCELLED.value:
+                return self._reactivate_cancelled_manual_order(
+                    dup,
+                    robot_id,
+                    client_name,
+                    quantidade_remedios,
+                    reopen_cancelled,
+                )
             raise AssignmentError("Já existe uma OS com este número.", "duplicate_os")
 
         meds = [f"Medicamento (teste) {i + 1}" for i in range(quantidade_remedios)]

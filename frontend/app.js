@@ -5,6 +5,8 @@
   /** Última aba (operação / histórico / relatório / logs) para restaurar após novo login na mesma sessão do navegador. */
   const LAST_APP_VIEW_KEY = "emr-last-app-view";
   const RELATORIO_OS_LIMIT_KEY = "emr-relatorio-os-limit";
+  /** Ids de ordens cujo relatório já foi descarregado neste navegador (qualquer formato). */
+  const RELATORIO_DOWNLOADED_IDS_KEY = "emr-relatorio-baixados";
   let relatorioOsPerPageCached = 50;
   /** Último id de auditoria de OS concluída “visto” neste separador — badge = eventos com id maior. */
   const NOTIF_LAST_SEEN_KEY = "emr-notif-last-seen-id";
@@ -135,9 +137,6 @@
     relatorioOsAte: document.getElementById("relatorio-os-ate"),
     relatorioOsFiltroOs: document.getElementById("relatorio-os-filtro-os"),
     relatorioOsCliente: document.getElementById("relatorio-os-cliente"),
-    relatorioOsSituacao: document.getElementById("relatorio-os-situacao"),
-    relatorioOsNomeSeparador: document.getElementById("relatorio-os-nome-separador"),
-    relatorioOsCodigoSeparador: document.getElementById("relatorio-os-codigo-separador"),
     relatorioOsResult: document.getElementById("relatorio-os-result"),
     btnRelatorioOsConsultar: document.getElementById("btn-relatorio-os-consultar"),
     btnRelatorioOsLimpar: document.getElementById("btn-relatorio-os-limpar"),
@@ -152,6 +151,12 @@
     manualOsModalBackdrop: document.querySelector("#manual-os-modal [data-manual-os-modal-dismiss]"),
     manualOsModalCancel: document.getElementById("manual-os-modal-cancel"),
     btnOpenManualOs: document.getElementById("btn-open-manual-os"),
+    manualOsReopenModal: document.getElementById("manual-os-reopen-modal"),
+    manualOsReopenBackdrop: document.getElementById("manual-os-reopen-backdrop"),
+    manualOsReopenStats: document.getElementById("manual-os-reopen-stats"),
+    manualOsReopenDismiss: document.getElementById("manual-os-reopen-dismiss"),
+    manualOsReopenRestart: document.getElementById("manual-os-reopen-restart"),
+    manualOsReopenResume: document.getElementById("manual-os-reopen-resume"),
     relatorioOsExportModal: document.getElementById("relatorio-os-export-modal"),
     relatorioOsExportCancel: document.getElementById("relatorio-os-export-cancel"),
     relatorioOsExportConfirm: document.getElementById("relatorio-os-export-confirm"),
@@ -166,6 +171,7 @@
     relatorioBatchCodigoSeparador: document.getElementById("relatorio-batch-codigo-separador"),
     relatorioBatchDownload: document.getElementById("relatorio-batch-download"),
     relatorioBatchPreview: document.getElementById("relatorio-batch-preview"),
+    btnRelatorioBatchIncludeAllFilter: document.getElementById("btn-relatorio-batch-include-all-filter"),
   };
 
   let csrfToken = "";
@@ -210,6 +216,8 @@
   const RELATORIO_BATCH_PREVIEW_DEBOUNCE_MS = 380;
   /** Total de ordens no filtro (última resposta da pré-visualização). */
   let relatorioBatchPreviewTotalCount = 0;
+  /** IDs marcados para o lote; mantém-se ao mudar filtros (união entre pesquisas). */
+  const relatorioBatchSelectedOrderIds = new Set();
   let detailPollTimer = null;
   let detailPollRobotId = null;
   let listPollTimer = null;
@@ -558,7 +566,33 @@
     }
   }
 
+  function closeManualOsReopenModal() {
+    if (!el.manualOsReopenModal) return;
+    el.manualOsReopenModal.hidden = true;
+    el.manualOsReopenModal.setAttribute("aria-hidden", "true");
+  }
+
+  function openManualOsReopenModal(detail) {
+    if (!el.manualOsReopenModal) return;
+    if (el.manualOsReopenStats) {
+      const sep = Number(detail?.cancelled_separated_units);
+      const exp = Number(detail?.expected_units);
+      const sepOk = Number.isFinite(sep);
+      const expOk = Number.isFinite(exp);
+      if (sepOk && expOk) {
+        el.manualOsReopenStats.textContent = `Antes do cancelamento havia ${sep} de ${exp} unidades já separadas.`;
+        el.manualOsReopenStats.hidden = false;
+      } else {
+        el.manualOsReopenStats.textContent = "";
+        el.manualOsReopenStats.hidden = true;
+      }
+    }
+    el.manualOsReopenModal.hidden = false;
+    el.manualOsReopenModal.setAttribute("aria-hidden", "false");
+  }
+
   function closeManualOsModal() {
+    closeManualOsReopenModal();
     if (!el.manualOsModal) return;
     el.manualOsModal.hidden = true;
     el.manualOsModal.setAttribute("aria-hidden", "true");
@@ -584,6 +618,7 @@
   async function openManualOsModal() {
     if (!el.manualOsModal) return;
     if (el.newRobotModal && !el.newRobotModal.hidden) closeNewRobotModal();
+    closeManualOsReopenModal();
     manualOsModalPreviousFocus = document.activeElement;
     try {
       await fetchCsrf();
@@ -777,8 +812,10 @@
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      markRelatorioOrdersDownloaded([id]);
       closeRelatorioOsExportModal();
       toast("Download iniciado.", "success");
+      void loadRelatorioOsList(false);
     } finally {
       if (
         el.relatorioOsExportConfirm &&
@@ -800,12 +837,6 @@
       el.relatorioBatchFiltroOs.value = el.relatorioOsFiltroOs.value || "";
     if (el.relatorioBatchCliente && el.relatorioOsCliente)
       el.relatorioBatchCliente.value = el.relatorioOsCliente.value || "";
-    if (el.relatorioBatchSituacao && el.relatorioOsSituacao)
-      el.relatorioBatchSituacao.value = el.relatorioOsSituacao.value || "";
-    if (el.relatorioBatchNomeSeparador && el.relatorioOsNomeSeparador)
-      el.relatorioBatchNomeSeparador.value = el.relatorioOsNomeSeparador.value || "";
-    if (el.relatorioBatchCodigoSeparador && el.relatorioOsCodigoSeparador)
-      el.relatorioBatchCodigoSeparador.value = el.relatorioOsCodigoSeparador.value || "";
   }
 
   function updateRelatorioBatchFormatUI() {
@@ -819,12 +850,7 @@
     });
   }
 
-  function relatorioBatchCompletedParams() {
-    const params = new URLSearchParams({
-      limit: String(RELATORIO_BATCH_PREVIEW_LIMIT),
-      offset: "0",
-      preview: "true",
-    });
+  function relatorioBatchAppendFiltersToSearchParams(params) {
     const de = el.relatorioBatchDe?.value?.trim() || "";
     const ate = el.relatorioBatchAte?.value?.trim() || "";
     if (de && ate) {
@@ -841,7 +867,96 @@
     if (nsep) params.set("nome_separador", nsep);
     const csep = el.relatorioBatchCodigoSeparador?.value?.trim();
     if (csep) params.set("codigo_separador", csep);
+  }
+
+  function relatorioBatchCompletedParams() {
+    const params = new URLSearchParams({
+      limit: String(RELATORIO_BATCH_PREVIEW_LIMIT),
+      offset: "0",
+      preview: "true",
+    });
+    relatorioBatchAppendFiltersToSearchParams(params);
     return params;
+  }
+
+  async function relatorioBatchIncludeAllOrdersFromCurrentFilter() {
+    const de = el.relatorioBatchDe?.value?.trim() || "";
+    const ate = el.relatorioBatchAte?.value?.trim() || "";
+    if ((de && !ate) || (!de && ate)) {
+      toast("Preencha data inicial e final juntas, ou deixe as duas em branco.", "error");
+      return;
+    }
+    const btn = el.btnRelatorioBatchIncludeAllFilter;
+    if (btn) btn.disabled = true;
+    let added = 0;
+    let totalReported = 0;
+    try {
+      const chunk = RELATORIO_BATCH_PREVIEW_LIMIT;
+      let offset = 0;
+      let first = true;
+      for (;;) {
+        const params = new URLSearchParams({
+          limit: String(chunk),
+          offset: String(offset),
+          preview: "true",
+        });
+        relatorioBatchAppendFiltersToSearchParams(params);
+        const res = await fetch(`${API_BASE}/service-orders/completed?${params.toString()}`, FETCH_CRED);
+        if (res.status === 401) {
+          window.location.replace("/login.html");
+          return;
+        }
+        const text = await res.text();
+        if (!res.ok) {
+          let msg = `Erro ${res.status}`;
+          try {
+            const err = JSON.parse(text);
+            msg = formatApiDetail(err.detail) || text || msg;
+          } catch {
+            if (text) msg = text;
+          }
+          toast(msg, "error");
+          return;
+        }
+        const data = JSON.parse(text);
+        totalReported = Number(data.total) || 0;
+        if (first && totalReported === 0) {
+          toast("Nenhuma ordem encerrada para estes filtros.", "error");
+          return;
+        }
+        first = false;
+        const items = Array.isArray(data.items) ? data.items : [];
+        for (const row of items) {
+          const id = Number(row.id);
+          if (!Number.isFinite(id)) continue;
+          if (!relatorioBatchSelectedOrderIds.has(id)) {
+            relatorioBatchSelectedOrderIds.add(id);
+            added += 1;
+          }
+        }
+        if (items.length === 0) break;
+        if (items.length < chunk) break;
+        offset += chunk;
+        if (offset >= totalReported) break;
+      }
+      const totalSel = relatorioBatchSelectedOrderIds.size;
+      if (added > 0) {
+        toast(
+          `${formatHistoricoNum(added)} ordem${added === 1 ? "" : "ens"} adicionada${added === 1 ? "" : "s"} à seleção (${formatHistoricoNum(totalSel)} no total).`,
+          "success",
+        );
+      } else {
+        toast(
+          `Todas as ${formatHistoricoNum(totalReported)} ordem${totalReported === 1 ? "" : "ens"} deste filtro já estavam na seleção (${formatHistoricoNum(totalSel)} no total).`,
+          "success",
+        );
+      }
+      void loadRelatorioBatchPreview();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Falha ao listar ordens.", "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   function syncRelatorioBatchSelectAllCheckbox() {
@@ -850,20 +965,24 @@
     const wrap = el.relatorioBatchPreview?.querySelector(".relatorio-batch-preview__table-wrap");
     if (!wrap) return;
     const cbs = wrap.querySelectorAll(".relatorio-batch-include-cb");
-    const n = cbs.length;
-    let c = 0;
+    let n = 0;
+    let inSet = 0;
     cbs.forEach((x) => {
-      if (x instanceof HTMLInputElement && x.checked) c += 1;
+      if (!(x instanceof HTMLInputElement)) return;
+      const id = Number(x.getAttribute("data-order-id"));
+      if (!Number.isFinite(id)) return;
+      n += 1;
+      if (relatorioBatchSelectedOrderIds.has(id)) inSet += 1;
     });
     if (n === 0) {
       master.checked = false;
       master.indeterminate = false;
       return;
     }
-    if (c === 0) {
+    if (inSet === 0) {
       master.checked = false;
       master.indeterminate = false;
-    } else if (c === n) {
+    } else if (inSet === n) {
       master.checked = true;
       master.indeterminate = false;
     } else {
@@ -873,27 +992,13 @@
   }
 
   /**
-   * @returns {{ mode: "none"|"empty"|"all"|"subset", ids: number[] }}
+   * Seleção = união de todas as ordens marcadas ao longo das pesquisas no modal.
+   * @returns {{ mode: "empty"|"subset", ids: number[] }}
    */
   function getRelatorioBatchExportSelection() {
-    const wrap = el.relatorioBatchPreview?.querySelector(".relatorio-batch-preview__table-wrap");
-    if (!wrap) return { mode: "none", ids: [] };
-    const cbs = wrap.querySelectorAll(".relatorio-batch-include-cb");
-    const ids = [];
-    let nChecked = 0;
-    cbs.forEach((elCheckbox) => {
-      if (!(elCheckbox instanceof HTMLInputElement)) return;
-      const id = Number(elCheckbox.getAttribute("data-order-id"));
-      if (!Number.isFinite(id)) return;
-      if (elCheckbox.checked) {
-        ids.push(id);
-        nChecked += 1;
-      }
-    });
-    if (cbs.length === 0) return { mode: "none", ids: [] };
-    if (nChecked === 0) return { mode: "empty", ids: [] };
-    const allVisibleChecked = nChecked === cbs.length;
-    if (allVisibleChecked) return { mode: "all", ids: [] };
+    const ids = Array.from(relatorioBatchSelectedOrderIds).filter((id) => Number.isFinite(id));
+    ids.sort((a, b) => a - b);
+    if (ids.length === 0) return { mode: "empty", ids: [] };
     return { mode: "subset", ids };
   }
 
@@ -913,18 +1018,56 @@
     relatorioBatchPreviewDebounce = setTimeout(run, RELATORIO_BATCH_PREVIEW_DEBOUNCE_MS);
   }
 
+  function getRelatorioDownloadedSet() {
+    try {
+      const raw = localStorage.getItem(RELATORIO_DOWNLOADED_IDS_KEY);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return new Set();
+      return new Set(
+        arr
+          .map((x) => Number(x))
+          .filter((n) => Number.isFinite(n) && n > 0),
+      );
+    } catch {
+      return new Set();
+    }
+  }
+
+  function markRelatorioOrdersDownloaded(ids) {
+    const s = getRelatorioDownloadedSet();
+    for (const id of ids) {
+      const n = Number(id);
+      if (Number.isFinite(n) && n > 0) s.add(n);
+    }
+    try {
+      localStorage.setItem(
+        RELATORIO_DOWNLOADED_IDS_KEY,
+        JSON.stringify(Array.from(s).sort((a, b) => a - b)),
+      );
+    } catch {
+      /* ignore quota */
+    }
+  }
+
   function renderRelatorioBatchPreviewTable(data) {
     const container = el.relatorioBatchPreview;
     if (!container) return;
     const total = Number(data.total) || 0;
     relatorioBatchPreviewTotalCount = total;
     const items = Array.isArray(data.items) ? data.items : [];
+    const downloadedSet = getRelatorioDownloadedSet();
     const nf = new Intl.NumberFormat("pt-BR");
+    const nSel = relatorioBatchSelectedOrderIds.size;
+    const selHint =
+      nSel > 0
+        ? ` ${formatHistoricoNum(nSel)} ordem${nSel === 1 ? "" : "ens"} selecionada${nSel === 1 ? "" : "s"} para o ficheiro (acumulado ao mudar os filtros).`
+        : "";
     const metaExtra =
       total > items.length
-        ? ` Mostrando as primeiras ${formatHistoricoNum(items.length)} de ${formatHistoricoNum(total)} ordens. Desmarque linhas para excluir do ficheiro; com todas marcadas, o ficheiro inclui o conjunto completo do filtro.`
+        ? ` Mostrando as primeiras ${formatHistoricoNum(items.length)} de ${formatHistoricoNum(total)} ordens neste filtro. Marque as linhas desejadas; a seleção mantém-se se pesquisar outro cliente.${selHint}`
         : total > 0
-          ? ` ${formatHistoricoNum(total)} ${total === 1 ? "ordem" : "ordens"} no filtro. Desmarque linhas para excluir do ficheiro.`
+          ? ` ${formatHistoricoNum(total)} ${total === 1 ? "ordem" : "ordens"} neste filtro. Marque as que quer incluir no ficheiro; pode acumular seleções ao alterar os critérios.${selHint}`
           : "";
     if (items.length === 0) {
       container.innerHTML = `<p class="historico-empty" role="status">Nenhuma ordem encerrada para estes filtros.</p>`;
@@ -951,15 +1094,24 @@
         const clientRaw = row.client_name ? String(row.client_name) : "";
         const qtd = nf.format(Number(row.quantidade_total ?? row.unidades_totais) || 0);
         const oid = Number(row.id);
+        const isSel = Number.isFinite(oid) && relatorioBatchSelectedOrderIds.has(oid);
+        const checkedAttr = isSel ? " checked" : "";
+        const jaBaixado =
+          !Number.isFinite(oid)
+            ? "—"
+            : downloadedSet.has(oid)
+              ? '<span class="relatorio-batch-preview__dl-yes" title="Relatório já descarregado neste navegador">Sim</span>'
+              : '<span class="relatorio-batch-preview__dl-no" title="Relatório ainda não descarregado neste navegador">Não</span>';
         return `<tr>
           <td class="relatorio-batch-preview__check">
-            <input type="checkbox" class="relatorio-batch-include-cb" data-order-id="${Number.isFinite(oid) ? oid : ""}" checked aria-label="Incluir esta ordem no ficheiro" />
+            <input type="checkbox" class="relatorio-batch-include-cb" data-order-id="${Number.isFinite(oid) ? oid : ""}"${checkedAttr} aria-label="Incluir esta ordem no ficheiro" />
           </td>
           <td class="relatorio-batch-preview__os">${escapeHtml(String(row.os_code))}</td>
           <td class="logs-table__time">${dataOnly}</td>
           <td class="relatorio-batch-preview__cell--truncate" title="${escapeHtml(clientRaw)}">${escapeHtml(clientRaw || "—")}</td>
           <td>${escapeHtml(situacaoLabel)}</td>
           <td class="relatorio-batch-preview__cell--truncate" title="${row.separador_nome ? escapeHtml(String(row.separador_nome)) : ""}">${sepDisplay}</td>
+          <td class="relatorio-batch-preview__dl">${jaBaixado}</td>
           <td class="relatorio-batch-preview__num">${qtd}</td>
         </tr>`;
       })
@@ -973,13 +1125,14 @@
           <thead>
             <tr>
               <th scope="col" class="relatorio-batch-preview__check">
-                <input type="checkbox" id="relatorio-batch-select-all" checked aria-label="Incluir todas as ordens listadas no ficheiro" />
+                <input type="checkbox" id="relatorio-batch-select-all" aria-label="Marcar ou desmarcar todas as ordens visíveis nesta lista" />
               </th>
               <th scope="col">OS</th>
               <th scope="col">Data</th>
               <th scope="col">Cliente</th>
               <th scope="col">Situação</th>
               <th scope="col">Separador</th>
+              <th scope="col" class="relatorio-batch-preview__dl">Baixado</th>
               <th scope="col" class="relatorio-batch-preview__num">Qtd.</th>
             </tr>
           </thead>
@@ -1078,6 +1231,7 @@
 
   function openRelatorioBatchModal() {
     if (!el.relatorioBatchModal) return;
+    relatorioBatchSelectedOrderIds.clear();
     copyRelatorioListFiltersToBatch();
     relatorioBatchSelectedFormat = "csv";
     updateRelatorioBatchFormatUI();
@@ -1099,10 +1253,6 @@
       return;
     }
     const sel = getRelatorioBatchExportSelection();
-    if (sel.mode === "none") {
-      toast("Carregue a pré-visualização antes de baixar.", "error");
-      return;
-    }
     if (sel.mode === "empty") {
       toast("Marque pelo menos uma ordem para incluir no ficheiro.", "error");
       return;
@@ -1125,9 +1275,7 @@
       if (nsep) payload.nome_separador = nsep;
       const csep = el.relatorioBatchCodigoSeparador?.value?.trim();
       if (csep) payload.codigo_separador = csep;
-      if (sel.mode === "subset") {
-        payload.order_ids = sel.ids;
-      }
+      payload.order_ids = sel.ids;
       const res = await fetch(`${API_BASE}/service-orders/export-batch`, {
         ...FETCH_CRED,
         method: "POST",
@@ -1167,8 +1315,10 @@
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      markRelatorioOrdersDownloaded(sel.ids);
       closeRelatorioBatchModal();
       toast("Download iniciado.", "success");
+      void loadRelatorioOsList(false);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Falha ao gerar o ficheiro.", "error");
     } finally {
@@ -1680,12 +1830,6 @@
       if (fo) params.set("os", fo);
       const cl = el.relatorioOsCliente?.value?.trim();
       if (cl) params.set("cliente", cl);
-      const sit = el.relatorioOsSituacao?.value?.trim();
-      if (sit) params.set("situacao", sit);
-      const nsep = el.relatorioOsNomeSeparador?.value?.trim();
-      if (nsep) params.set("nome_separador", nsep);
-      const csep = el.relatorioOsCodigoSeparador?.value?.trim();
-      if (csep) params.set("codigo_separador", csep);
       const res = await fetch(`${API_BASE}/service-orders/completed?${params}`, FETCH_CRED);
       const text = await res.text();
       if (res.status === 401) {
@@ -1719,9 +1863,6 @@
     if (el.relatorioOsAte) el.relatorioOsAte.value = "";
     if (el.relatorioOsFiltroOs) el.relatorioOsFiltroOs.value = "";
     if (el.relatorioOsCliente) el.relatorioOsCliente.value = "";
-    if (el.relatorioOsSituacao) el.relatorioOsSituacao.value = "";
-    if (el.relatorioOsNomeSeparador) el.relatorioOsNomeSeparador.value = "";
-    if (el.relatorioOsCodigoSeparador) el.relatorioOsCodigoSeparador.value = "";
     relatorioOsPageOffset = 0;
     void loadRelatorioOsList(true);
   }
@@ -1736,6 +1877,7 @@
     const canPrev = relatorioOsPageOffset > 0;
     const canNext = to < total;
     const nf = new Intl.NumberFormat("pt-BR");
+    const downloadedSet = getRelatorioDownloadedSet();
     const showPager = total > 0 && (canPrev || canNext);
     const pagerInner = showPager
       ? `<div class="logs-pagination" role="navigation" aria-label="Páginas do relatório">
@@ -1788,11 +1930,17 @@
           situacaoRaw === "cancelada" || situacaoRaw === "concluida"
             ? `<span class="badge ${badgeClass}">${situacaoRaw === "cancelada" ? "Cancelada" : "Concluída"}</span>`
             : `<span class="badge badge--neutral">${escapeHtml(situacaoLabel)}</span>`;
+        const oidRow = Number(row.id);
+        const dlStateBadge = !Number.isFinite(oidRow)
+          ? ""
+          : downloadedSet.has(oidRow)
+            ? `<span class="badge badge--neutral relatorio-os-card__dl-indicator" title="Neste navegador, o relatório desta ordem (CSV, XLSX ou PDF) já foi descarregado.">Já baixado</span>`
+            : `<span class="badge relatorio-os-card__dl-indicator relatorio-os-card__dl-indicator--pending" title="Neste navegador, o relatório desta ordem ainda não foi descarregado.">Não baixado</span>`;
         return `<li class="relatorio-separador-list__item">
           <article class="relatorio-separador-card relatorio-os-card" aria-label="Ordem ${escapeHtml(String(row.os_code))}">
             <div class="relatorio-separador-card__head">
               <span class="relatorio-separador-card__name">${escapeHtml(String(row.os_code))}</span>
-              ${situacaoHtml}
+              <div class="relatorio-os-card__head-badges">${situacaoHtml}${dlStateBadge}</div>
             </div>
             <div class="relatorio-os-card__grid" role="group" aria-label="Detalhes da ordem">
               <span class="relatorio-os-card__k">Data</span>
@@ -1982,14 +2130,14 @@
       el.btnNotifClear.disabled = visible.length === 0;
     }
     if (!notifItems.length) {
-      el.notifEmpty.textContent = "Nenhuma conclusão recente.";
+      el.notifEmpty.textContent = "Nenhuma conclusão ou cancelamento recente.";
       el.notifEmpty.hidden = false;
       el.notifList.hidden = true;
       el.notifList.innerHTML = "";
       return;
     }
     if (!visible.length) {
-      el.notifEmpty.textContent = "Lista limpa. Novas conclusões aparecerão aqui.";
+      el.notifEmpty.textContent = "Lista limpa. Novos eventos aparecerão aqui.";
       el.notifEmpty.hidden = false;
       el.notifList.hidden = true;
       el.notifList.innerHTML = "";
@@ -2995,8 +3143,7 @@
     }
   }
 
-  el.formManualOs?.addEventListener("submit", async (ev) => {
-    ev.preventDefault();
+  async function runManualOsSubmit(reopenCancelled) {
     const rid = parseInt(el.manualOsRobot?.value || "", 10);
     const qty = parseInt(el.manualOsQty?.value || "0", 10);
     const code = el.manualOsCode?.value.trim() || "";
@@ -3014,19 +3161,41 @@
     }
     await fetchCsrf();
     el.btnManualOsSubmit.disabled = true;
+    if (el.manualOsReopenResume) el.manualOsReopenResume.disabled = true;
+    if (el.manualOsReopenRestart) el.manualOsReopenRestart.disabled = true;
     const wantSimulate = Boolean(el.manualOsSimulate?.checked);
+    const body = {
+      os_code: code,
+      client_name: el.manualOsClient?.value.trim() || "",
+      robot_id: rid,
+      quantidade_remedios: qty,
+    };
+    if (reopenCancelled === "resume" || reopenCancelled === "restart") {
+      body.reopen_cancelled = reopenCancelled;
+    }
     try {
       const res = await apiJson("/service-orders/manual", {
         method: "POST",
-        body: JSON.stringify({
-          os_code: code,
-          client_name: el.manualOsClient?.value.trim() || "",
-          robot_id: rid,
-          quantidade_remedios: qty,
-        }),
+        body: JSON.stringify(body),
       });
+      const text = await res.text();
+      if (res.status === 409) {
+        let payload;
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          toast("Conflito ao criar OS.", "error");
+          return;
+        }
+        const d = payload.detail;
+        if (d && typeof d === "object" && d.code === "cancelled_os_reuse_required") {
+          openManualOsReopenModal(d);
+          return;
+        }
+        toast(formatApiDetail(d ?? payload.detail) || "Conflito ao criar OS.", "error");
+        return;
+      }
       if (!res.ok) {
-        const text = await res.text();
         let msg = `Erro ${res.status}`;
         try {
           const err = JSON.parse(text);
@@ -3037,12 +3206,21 @@
         toast(msg, "error");
         return;
       }
-      const order = await res.json();
+      let order = {};
+      try {
+        order = text ? JSON.parse(text) : {};
+      } catch {
+        order = {};
+      }
+      closeManualOsReopenModal();
       el.formManualOs.reset();
       if (el.manualOsQty) el.manualOsQty.value = "5";
       if (el.manualOsSimulate) el.manualOsSimulate.checked = true;
       closeManualOsModal();
-      toast("OS criada e enviada ao separador.", "success");
+      toast(
+        reopenCancelled ? "OS reaberta e enviada ao separador." : "OS criada e enviada ao separador.",
+        "success",
+      );
       stopRemedySimulation(rid);
       await loadRobots();
       await selectRobot(rid);
@@ -3055,7 +3233,14 @@
       toast(e instanceof Error ? e.message : "Erro ao criar OS.", "error");
     } finally {
       el.btnManualOsSubmit.disabled = false;
+      if (el.manualOsReopenResume) el.manualOsReopenResume.disabled = false;
+      if (el.manualOsReopenRestart) el.manualOsReopenRestart.disabled = false;
     }
+  }
+
+  el.formManualOs?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    await runManualOsSubmit(null);
   });
 
   el.formNewRobot.addEventListener("submit", async (ev) => {
@@ -3316,6 +3501,20 @@
   el.newRobotModalCancel?.addEventListener("click", closeNewRobotModal);
   el.manualOsModalBackdrop?.addEventListener("click", closeManualOsModal);
   el.manualOsModalCancel?.addEventListener("click", closeManualOsModal);
+  el.manualOsReopenDismiss?.addEventListener("click", () => {
+    closeManualOsReopenModal();
+  });
+  el.manualOsReopenBackdrop?.addEventListener("click", () => {
+    closeManualOsReopenModal();
+  });
+  el.manualOsReopenResume?.addEventListener("click", async () => {
+    closeManualOsReopenModal();
+    await runManualOsSubmit("resume");
+  });
+  el.manualOsReopenRestart?.addEventListener("click", async () => {
+    closeManualOsReopenModal();
+    await runManualOsSubmit("restart");
+  });
 
   el.robotSearch.addEventListener("input", () => {
     clearTimeout(robotSearchDebounce);
@@ -3477,12 +3676,23 @@
     if (t instanceof HTMLInputElement && t.id === "relatorio-batch-select-all") {
       const wrap = el.relatorioBatchPreview?.querySelector(".relatorio-batch-preview__table-wrap");
       wrap?.querySelectorAll(".relatorio-batch-include-cb").forEach((cb) => {
-        if (cb instanceof HTMLInputElement) cb.checked = t.checked;
+        if (!(cb instanceof HTMLInputElement)) return;
+        const oid = Number(cb.getAttribute("data-order-id"));
+        if (!Number.isFinite(oid)) return;
+        if (t.checked) relatorioBatchSelectedOrderIds.add(oid);
+        else relatorioBatchSelectedOrderIds.delete(oid);
+        cb.checked = relatorioBatchSelectedOrderIds.has(oid);
       });
       t.indeterminate = false;
+      syncRelatorioBatchSelectAllCheckbox();
       return;
     }
     if (t instanceof HTMLInputElement && t.classList.contains("relatorio-batch-include-cb")) {
+      const oid = Number(t.getAttribute("data-order-id"));
+      if (Number.isFinite(oid)) {
+        if (t.checked) relatorioBatchSelectedOrderIds.add(oid);
+        else relatorioBatchSelectedOrderIds.delete(oid);
+      }
       syncRelatorioBatchSelectAllCheckbox();
     }
   });
@@ -3501,6 +3711,9 @@
     }
   });
   el.relatorioBatchDownload?.addEventListener("click", () => void runRelatorioBatchDownload());
+  el.btnRelatorioBatchIncludeAllFilter?.addEventListener("click", () =>
+    void relatorioBatchIncludeAllOrdersFromCurrentFilter(),
+  );
 
   el.relatorioOsExportModal?.addEventListener("click", (ev) => {
     if (ev.target.closest("[data-relatorio-os-export-dismiss]")) {

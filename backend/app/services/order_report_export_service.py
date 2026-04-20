@@ -2,28 +2,157 @@
 
 from __future__ import annotations
 
+import base64
 import csv
+import functools
 import io
 import json
+import os
 import re
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
-from xml.sax.saxutils import escape
 
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
+from xhtml2pdf import pisa
 
 from app.models.entities import ServiceOrder, ServiceOrderStatus
 from app.repositories.robot_repository import RobotRepository
 from app.schemas.service_order import MedicineReportLine, OrderReportItem
 from app.services.historico_service import _data_conclusao_calendario_br
+
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+_IMG_DIR = Path(__file__).resolve().parent.parent / "img"
+_pdf_jinja_env: Environment | None = None
+
+
+def _pdf_logos_files_exist() -> bool:
+    return (_IMG_DIR / "SofttekLogo-4web.svg").is_file() and (_IMG_DIR / "logo_apsen.svg").is_file()
+
+
+def _svg_file_to_png_data_uri(svg_path: Path) -> str | None:
+    """Rasteriza SVG → PNG (mesma pilha do xhtml2pdf); data URI é mais fiável que <img src=.svg>."""
+    try:
+        from xhtml2pdf.xhtml2pdf_reportlab import PmlImage
+    except ImportError:
+        return None
+    if not svg_path.is_file():
+        return None
+    try:
+        raw = svg_path.read_bytes()
+        pm = PmlImage(raw, src=svg_path.name)
+        raster = pm.getDrawingRaster()
+        if raster is None:
+            return None
+        b64 = base64.b64encode(raster.getvalue()).decode("ascii")
+        return f"data:image/png;base64,{b64}"
+    except Exception:
+        return None
+
+
+def _pdf_logo_image_srcs() -> tuple[str | None, str | None]:
+    """Preferir PNG inline; fallback para ficheiros relativos + path no CreatePDF."""
+    s_softtek = _svg_file_to_png_data_uri(_IMG_DIR / "SofttekLogo-4web.svg")
+    s_apsen = _svg_file_to_png_data_uri(_IMG_DIR / "logo_apsen.svg")
+    if s_softtek and s_apsen:
+        return s_softtek, s_apsen
+    if _pdf_logos_files_exist():
+        return "SofttekLogo-4web.svg", "logo_apsen.svg"
+    return None, None
+
+
+def _pdf_img_base_path() -> str:
+    """Diretório base para src relativos em <img> (pisa/xhtml2pdf)."""
+    p = str(_IMG_DIR.resolve())
+    if not p.endswith(os.sep):
+        p += os.sep
+    return p
+
+
+def _get_pdf_jinja_env() -> Environment:
+    global _pdf_jinja_env
+    if _pdf_jinja_env is None:
+        _pdf_jinja_env = Environment(
+            loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+            autoescape=select_autoescape(["html", "htm", "xml"]),
+        )
+    return _pdf_jinja_env
+
+
+def _order_report_pdf_context(
+    item: OrderReportItem,
+    *,
+    exportado_por: str,
+    data_exportacao: str,
+) -> dict:
+    """Contexto para o template Jinja2 do PDF (A4, HTML)."""
+    data_fmt = item.data.strftime("%d/%m/%Y") if item.data else "—"
+    logo_softtek_src, logo_apsen_src = _pdf_logo_image_srcs()
+    nome_sep = (item.separador_nome or "").strip() or "—"
+    # Código do robô (ex.: RB-01) vem do cadastro; coincide com separador_codigo em order_to_report_item.
+    rc = (item.separador_codigo or "").strip()
+    robot_txt = (
+        rc
+        if rc
+        else (str(item.robot_id) if item.robot_id is not None else "—")
+    )
+    return {
+        "has_pdf_logos": logo_softtek_src is not None and logo_apsen_src is not None,
+        "logo_softtek_src": logo_softtek_src or "",
+        "logo_apsen_src": logo_apsen_src or "",
+        "data_fmt": data_fmt,
+        "os_code": item.os_code,
+        "client_name": item.client_name or "",
+        "nome_separador": nome_sep,
+        "robot_codigo_txt": robot_txt,
+        "quantidade_total": item.quantidade_total,
+        "quantidade_separada": item.quantidade_separada,
+        "porcentagem_conclusao": item.porcentagem_conclusao or "",
+        "tempo_total_separacao": item.tempo_total_separacao or "",
+        "tempo_medio_por_remedio": item.tempo_medio_por_remedio or "",
+        "numero_pausas": item.numero_pausas,
+        "status_label": _situacao_label(item.situacao),
+        "situacao": item.situacao,
+        "erro_descricao": item.erro_descricao or "",
+        "erro_codigo": item.erro_codigo or "",
+        "exportado_por": exportado_por,
+        "data_exportacao": data_exportacao,
+    }
+
+
+def _render_order_report_pdf_bytes(
+    item: OrderReportItem,
+    *,
+    exportado_por: str,
+    data_exportacao: str,
+) -> bytes:
+    env = _get_pdf_jinja_env()
+    template = env.get_template("reports/os_report.html")
+    html = template.render(
+        **_order_report_pdf_context(
+            item,
+            exportado_por=exportado_por,
+            data_exportacao=data_exportacao,
+        )
+    )
+    buf = io.BytesIO()
+    status = pisa.CreatePDF(
+        src=html,
+        dest=buf,
+        encoding="utf-8",
+        path=_pdf_img_base_path(),
+    )
+    if getattr(status, "err", 0):
+        raise RuntimeError("Falha ao gerar PDF a partir do HTML.")
+    raw = buf.getvalue()
+    if not raw:
+        raise RuntimeError("PDF gerado está vazio.")
+    return raw
+
 
 _REPORT_HEADERS_BASE = [
     "Data",
@@ -281,6 +410,7 @@ def order_to_report_item(db: Session, order: ServiceOrder) -> OrderReportItem | 
         medicine_lines=medicine_lines,
         numero_pausas=max(0, int(order.pause_count or 0)),
         separador_codigo=str(sep_codigo).strip(),
+        robot_id=rid,
         porcentagem_conclusao=_porcentagem_str(quantidade_total, quantidade_separada),
         tempo_total_separacao=tempo_total_str,
     )
@@ -531,73 +661,10 @@ def export_order_report_bytes(
             f"relatorio_{base}.xlsx",
         )
 
-    # PDF — paisagem, várias linhas de dados
-    bio = io.BytesIO()
-    page = landscape(A4)
-    doc = SimpleDocTemplate(
-        bio,
-        pagesize=page,
-        rightMargin=1.2 * cm,
-        leftMargin=1.2 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.5 * cm,
+    # PDF — HTML (Jinja2) renderizado para A4 via xhtml2pdf
+    pdf_bytes = _render_order_report_pdf_bytes(
+        item,
+        exportado_por=exportado_por,
+        data_exportacao=data_exportacao,
     )
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        name="TitlePT",
-        parent=styles["Heading1"],
-        fontName="Helvetica-Bold",
-        fontSize=14,
-        spaceAfter=12,
-    )
-    body = ParagraphStyle(
-        name="BodyPT",
-        parent=styles["Normal"],
-        fontName="Helvetica",
-        fontSize=6,
-        leading=8,
-    )
-    story: list = []
-    story.append(Paragraph("Relatório — Ordem de serviço", title_style))
-    story.append(Spacer(1, 0.2 * cm))
-
-    hdr = [Paragraph(f"<b>{escape(h)}</b>", body) for h in headers]
-    data_rows: list = []
-    for r in rows:
-        data_rows.append([Paragraph(escape(str(x)), body) for x in r])
-    ncols = len(headers)
-    usable_w = page[0] - 2.4 * cm
-    col_w = usable_w / ncols
-    cw = [col_w] * ncols
-    t = Table([hdr] + data_rows, colWidths=cw, repeatRows=1)
-    t.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef5")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#13212f")),
-                ("FONTSIZE", (0, 0), (-1, -1), 6),
-                ("GRID", (0, 0), (-1, -1), 0.2, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 2),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ]
-        )
-    )
-    story.append(t)
-    story.append(Spacer(1, 0.35 * cm))
-    story.append(
-        Paragraph(
-            "<i>Gerado pelo sistema EMR — dados da ordem encerrada.</i>",
-            ParagraphStyle(
-                name="FootPT",
-                parent=styles["Normal"],
-                fontName="Helvetica",
-                fontSize=8,
-                leading=11,
-            ),
-        )
-    )
-    doc.build(story)
-    return bio.getvalue(), "application/pdf", f"relatorio_{base}.pdf"
+    return pdf_bytes, "application/pdf", f"relatorio_{base}.pdf"

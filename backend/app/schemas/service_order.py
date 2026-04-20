@@ -11,6 +11,13 @@ class ManualOrderCreate(BaseModel):
     client_name: str = Field(default="", max_length=256)
     robot_id: int = Field(..., ge=1)
     quantidade_remedios: int = Field(..., ge=1, le=500)
+    reopen_cancelled: Literal["resume", "restart"] | None = Field(
+        default=None,
+        description=(
+            "Ao reutilizar o código de uma OS cancelada: retomar progresso (resume) "
+            "ou refazer lista e contagem (restart). Omitir na primeira tentativa para receber 409."
+        ),
+    )
 
 
 class MedicineReportLine(BaseModel):
@@ -70,6 +77,10 @@ class OrderReportItem(BaseModel):
     )
     numero_pausas: int = Field(default=0, ge=0)
     separador_codigo: str = Field(default="", description="Código do separador no cadastro.")
+    robot_id: int | None = Field(
+        default=None,
+        description="ID do robô que concluiu ou cancelou a OS (snapshot na conclusão/cancelamento).",
+    )
     porcentagem_conclusao: str = Field(
         default="",
         description="Percentual separado/previsto, formato pt-BR (ex.: 87,5%).",

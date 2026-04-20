@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.models.entities import AuditLog
 
-_OS_COMPLETION_ACTIONS = frozenset({"os_completed", "os_completed_auto"})
+_OS_COMPLETION_ACTIONS = frozenset({"os_completed", "os_completed_auto", "os_cancelled"})
 
 
 class NotificationService:

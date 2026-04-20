@@ -2374,17 +2374,6 @@ input[type="number"]::-webkit-inner-spin-button {
   flex-basis: 10.25rem;
 }
 
-.relatorio-os-form .relatorio-os-filters-grid .field:nth-child(5) {
-  width: 7.75rem;
-  flex-basis: 7.75rem;
-}
-
-.relatorio-os-form .relatorio-os-filters-grid .field:nth-child(6),
-.relatorio-os-form .relatorio-os-filters-grid .field:nth-child(7) {
-  width: 9rem;
-  flex-basis: 9rem;
-}
-
 .relatorio-os-form .relatorio-os-filters-grid .field input,
 .relatorio-os-form .relatorio-os-filters-grid .field select {
   width: 100%;
@@ -2495,6 +2484,27 @@ input[type="number"]::-webkit-inner-spin-button {
   width: 1.25rem;
   height: 1.25rem;
   flex-shrink: 0;
+}
+
+.relatorio-os-card__head-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  max-width: 100%;
+}
+
+.relatorio-os-card__dl-indicator {
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+}
+
+.relatorio-os-card__dl-indicator--pending {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  font-weight: 600;
 }
 
 .logs-view-stack {
@@ -2666,6 +2676,10 @@ input[type="number"]::-webkit-inner-spin-button {
   overflow-x: hidden;
 }
 
+.relatorio-batch-bulk-actions {
+  margin: 0 0 0.65rem;
+}
+
 .relatorio-batch-preview {
   margin: 0 0 1rem;
   min-height: 2.5rem;
@@ -2714,6 +2728,20 @@ input[type="number"]::-webkit-inner-spin-button {
 .relatorio-batch-preview__num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.relatorio-batch-preview__dl {
+  text-align: center;
+  font-size: 0.82rem;
+}
+
+.relatorio-batch-preview__dl-yes {
+  color: var(--accent, #2dd4bf);
+  font-weight: 600;
+}
+
+.relatorio-batch-preview__dl-no {
+  color: var(--text-muted);
 }
 
 .relatorio-batch-preview__check {

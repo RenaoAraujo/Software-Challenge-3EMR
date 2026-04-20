@@ -17,7 +17,11 @@ from app.schemas.service_order import (
     ServiceOrderOut,
 )
 from app.services.historico_service import _utc_day_range
-from app.services.assignment_service import AssignmentError, AssignmentService
+from app.services.assignment_service import (
+    AssignmentError,
+    AssignmentService,
+    CancelledOsReuseRequired,
+)
 from app.services.order_report_export_service import (
     export_batch_order_reports_bytes,
     export_order_report_bytes,
@@ -166,22 +170,34 @@ def export_batch_order_reports(
             )
         restrict_export_ids = list(dict.fromkeys(payload.order_ids))
 
+    # Lista explícita de IDs: não aplicar filtros de período nem de texto — a seleção pode
+    # juntar ordens de várias pesquisas (ex.: clientes diferentes) no mesmo modal.
+    id_only = restrict_export_ids is not None
+    q_start = None if id_only else start_utc
+    q_end = None if id_only else end_excl
+    q_situacao = None if id_only else situacao
+    q_os = None if id_only else payload.os
+    q_nome = None if id_only else payload.nome
+    q_cliente = None if id_only else payload.cliente
+    q_nsep = None if id_only else payload.nome_separador
+    q_csep = None if id_only else payload.codigo_separador
+
     repo = ServiceOrderRepository(db)
     items: list[OrderReportItem] = []
     total = 0
     offset = 0
     while True:
         orders, total = repo.list_ended_orders_report(
-            start_utc=start_utc,
-            end_utc_exclusive=end_excl,
+            start_utc=q_start,
+            end_utc_exclusive=q_end,
             limit=_EXPORT_BATCH_PAGE_SIZE,
             offset=offset,
-            situacao=situacao,
-            os_contains=payload.os,
-            nome_cliente_contains=payload.nome,
-            cliente_contains=payload.cliente,
-            nome_separador_contains=payload.nome_separador,
-            codigo_separador_contains=payload.codigo_separador,
+            situacao=q_situacao,
+            os_contains=q_os,
+            nome_cliente_contains=q_nome,
+            cliente_contains=q_cliente,
+            nome_separador_contains=q_nsep,
+            codigo_separador_contains=q_csep,
             restrict_ids=restrict_export_ids,
         )
         for o in orders:
@@ -283,7 +299,21 @@ def create_manual_service_order(
             body.os_code,
             body.client_name,
             body.quantidade_remedios,
+            body.reopen_cancelled,
         )
+    except CancelledOsReuseRequired as e:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "cancelled_os_reuse_required",
+                "message": (
+                    "Já existe uma OS cancelada com este número. "
+                    "Escolha se o separador continua de onde parou ou refaz o pedido inteiro."
+                ),
+                "cancelled_separated_units": e.cancelled_separated_units,
+                "expected_units": e.expected_units,
+            },
+        ) from e
     except AssignmentError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     detail = RobotService(db).get_robot(body.robot_id)
