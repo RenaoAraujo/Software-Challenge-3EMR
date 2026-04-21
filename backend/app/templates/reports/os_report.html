@@ -20,10 +20,31 @@
         padding: 0;
       }
       .pdf-hero {
-        text-align: center;
+        text-align: left;
         margin: 0 0 6mm 0;
-        padding: 0;
+        padding: 0 0 4mm 0;
         border: none;
+        border-bottom: 2pt solid #1e3a5f;
+      }
+      /* Layout 2 colunas no cabeçalho: texto à esquerda, logo à direita. */
+      .pdf-hero__layout {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        margin: 0;
+      }
+      .pdf-hero__layout td {
+        vertical-align: middle;
+        border: none;
+        padding: 0;
+      }
+      .pdf-hero__layout td.pdf-hero__layout-left {
+        width: 70%;
+        padding-right: 4mm;
+      }
+      .pdf-hero__layout td.pdf-hero__layout-right {
+        width: 30%;
+        text-align: right;
       }
       .pdf-hero__title {
         font-size: 16pt;
@@ -31,52 +52,28 @@
         letter-spacing: 0.5pt;
         color: #1e3a5f;
         margin: 0 0 4mm 0;
-      }
-      .pdf-hero__logos {
-        margin: 0 auto 4mm auto;
-        text-align: center;
-      }
-      .pdf-logos-strip {
-        background-color: #005a9c;
-        background-image: linear-gradient(120deg, #005a9c 0%, #003c78 100%);
-        padding: 2.5mm 4mm;
-        border-radius: 2mm;
-        display: inline-block;
-      }
-      .pdf-logos-row {
-        border-collapse: collapse;
-      }
-      .pdf-logos-row td {
-        vertical-align: middle;
-        padding: 0 3mm 0 0;
-      }
-      .pdf-logos-row td:last-child {
-        padding-right: 0;
+        text-align: left;
       }
       .pdf-logo-img {
-        display: block;
-        height: 9mm;
+        height: 22mm;
         width: auto;
-        max-width: 36mm;
+        max-width: 56mm;
+        border-radius: 2mm;
       }
-      /* Cabeçalho metadados: mesmo alinhamento que Informações (50% / 50%) */
+      /* Metadados do cabeçalho: continuam em 2 linhas, alinhados à esquerda. */
       .pdf-hero__meta {
         width: 100%;
-        margin: 0 0 6mm 0;
+        margin: 0;
         border-collapse: collapse;
         table-layout: fixed;
         font-size: 11pt;
       }
-      .pdf-hero__meta tr:first-child td {
-        padding-bottom: 3mm;
+      .pdf-hero__meta td {
+        text-align: left;
         border: none;
       }
-      .pdf-hero__meta tr:last-child td {
-        border-bottom: 2pt solid #1e3a5f;
-        padding-bottom: 4mm;
-        border-left: none;
-        border-right: none;
-        border-top: none;
+      .pdf-hero__meta tr:first-child td {
+        padding-bottom: 3mm;
       }
       .pdf-hero__k {
         font-weight: 600;
@@ -268,50 +265,45 @@
   </head>
   <body>
     <div class="pdf-hero">
-      {% if has_pdf_logos %}
-      <div class="pdf-hero__logos">
-        <div class="pdf-logos-strip">
-          <table class="pdf-logos-row" cellpadding="0" cellspacing="0">
-            <tr>
-              <td>
-                <img class="pdf-logo-img" src="{{ logo_softtek_src | safe }}" alt="Softtek" />
-              </td>
-              <td>
-                <img class="pdf-logo-img" src="{{ logo_apsen_src | safe }}" alt="Apsen" />
-              </td>
-            </tr>
-          </table>
-        </div>
-      </div>
-      {% endif %}
-      <div class="pdf-hero__title">RELATÓRIO DE OPERAÇÃO</div>
-      <table class="pdf-info-grid pdf-hero__meta" cellpadding="0" cellspacing="0">
+      <table class="pdf-hero__layout" cellpadding="0" cellspacing="0">
         <tr>
-          <td class="pdf-info-grid__cell">
-            <div class="pdf-info-stack">
-              <span class="pdf-hero__k">OS:</span>
-              <span class="pdf-hero__v">{{ os_code }}</span>
-            </div>
+          <td class="pdf-hero__layout-left">
+            <div class="pdf-hero__title">RELATÓRIO DE OPERAÇÃO</div>
+            <table class="pdf-info-grid pdf-hero__meta" cellpadding="0" cellspacing="0">
+              <tr>
+                <td class="pdf-info-grid__cell">
+                  <div class="pdf-info-stack">
+                    <span class="pdf-hero__k">OS:</span>
+                    <span class="pdf-hero__v">{{ os_code }}</span>
+                  </div>
+                </td>
+                <td class="pdf-info-grid__cell pdf-info-grid__cell--right">
+                  <div class="pdf-info-stack">
+                    <span class="pdf-hero__k">Status:</span>
+                    <span class="pdf-hero__v pdf-header-status-value">{{ status_upper }}</span>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td class="pdf-info-grid__cell">
+                  <div class="pdf-info-stack">
+                    <span class="pdf-hero__k">Data:</span>
+                    <span class="pdf-hero__v">{{ data_fmt }}</span>
+                  </div>
+                </td>
+                <td class="pdf-info-grid__cell pdf-info-grid__cell--right">
+                  <div class="pdf-info-stack">
+                    <span class="pdf-hero__k">Emitido em:</span>
+                    <span class="pdf-hero__v">{{ data_exportacao }}</span>
+                  </div>
+                </td>
+              </tr>
+            </table>
           </td>
-          <td class="pdf-info-grid__cell pdf-info-grid__cell--right">
-            <div class="pdf-info-stack">
-              <span class="pdf-hero__k">Status:</span>
-              <span class="pdf-hero__v pdf-header-status-value">{{ status_upper }}</span>
-            </div>
-          </td>
-        </tr>
-        <tr>
-          <td class="pdf-info-grid__cell">
-            <div class="pdf-info-stack">
-              <span class="pdf-hero__k">Data:</span>
-              <span class="pdf-hero__v">{{ data_fmt }}</span>
-            </div>
-          </td>
-          <td class="pdf-info-grid__cell pdf-info-grid__cell--right">
-            <div class="pdf-info-stack">
-              <span class="pdf-hero__k">Emitido em:</span>
-              <span class="pdf-hero__v">{{ data_exportacao }}</span>
-            </div>
+          <td class="pdf-hero__layout-right">
+            {% if has_pdf_logos %}
+            <img class="pdf-logo-img" src="{{ logo_apsen_src | safe }}" alt="Apsen" />
+            {% endif %}
           </td>
         </tr>
       </table>

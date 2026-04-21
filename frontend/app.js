@@ -1335,7 +1335,7 @@
 
   async function runRelatorioBatchDownload() {
     const fmt = relatorioBatchSelectedFormat;
-    if (fmt !== "csv" && fmt !== "xlsx") return;
+    if (fmt !== "csv" && fmt !== "xlsx" && fmt !== "pdf") return;
     const de = el.relatorioBatchDe?.value?.trim() || "";
     const ate = el.relatorioBatchAte?.value?.trim() || "";
     if ((de && !ate) || (!de && ate)) {
@@ -1393,7 +1393,8 @@
         return;
       }
       const blob = await res.blob();
-      let filename = `relatorio_lote.${fmt === "xlsx" ? "xlsx" : "csv"}`;
+      const defaultExt = fmt === "xlsx" ? "xlsx" : fmt === "pdf" ? "zip" : "csv";
+      let filename = `relatorio_lote.${defaultExt}`;
       const cd = res.headers.get("Content-Disposition");
       const m = cd && /filename="([^"]+)"/.exec(cd);
       if (m) filename = m[1];
@@ -1769,10 +1770,12 @@
       opt.textContent = `${r.name} (${r.code})`;
       el.historicoRobot.appendChild(opt);
     });
-    if (selectedRobotId != null) {
-      el.historicoRobot.value = String(selectedRobotId);
-    } else if (prev && robotsCache.some((x) => String(x.id) === prev)) {
+    // A escolha manual no dropdown do histórico deve ter prioridade sobre o separador
+    // selecionado no sidebar — senão o polling de robots sobrescreve a seleção do usuário.
+    if (prev && robotsCache.some((x) => String(x.id) === prev)) {
       el.historicoRobot.value = prev;
+    } else if (selectedRobotId != null && robotsCache.some((x) => x.id === selectedRobotId)) {
+      el.historicoRobot.value = String(selectedRobotId);
     }
   }
 
@@ -3817,7 +3820,7 @@
     const fmtBtn = ev.target.closest("[data-relatorio-batch-format]");
     if (fmtBtn) {
       const fmt = fmtBtn.getAttribute("data-relatorio-batch-format");
-      if (fmt === "csv" || fmt === "xlsx") {
+      if (fmt === "csv" || fmt === "xlsx" || fmt === "pdf") {
         relatorioBatchSelectedFormat = fmt;
         updateRelatorioBatchFormatUI();
       }

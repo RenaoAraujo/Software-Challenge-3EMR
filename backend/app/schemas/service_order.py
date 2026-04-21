@@ -103,7 +103,7 @@ class OrdersReportResponse(BaseModel):
 class ExportBatchRequest(BaseModel):
     """Corpo do export em lote (POST): filtros iguais ao relatório; `order_ids` opcional restringe as ordens."""
 
-    format: Literal["csv", "xlsx"]
+    format: Literal["csv", "xlsx", "pdf"]
     de: date | None = None
     ate: date | None = None
     os: str | None = Field(None, max_length=64)

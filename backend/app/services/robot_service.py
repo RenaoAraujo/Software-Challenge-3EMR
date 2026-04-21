@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.entities import Robot, RobotStatus, ServiceOrderStatus, is_robot_online
+from app.models.entities import Robot, RobotStatus, ServiceOrder, ServiceOrderStatus, is_robot_online
 from app.repositories.robot_repository import RobotRepository
 from app.schemas.robot import (
     RobotCreateBody,
@@ -296,6 +297,18 @@ class RobotService:
             if order is not None and order.status == ServiceOrderStatus.IN_PROGRESS.value:
                 order.status = ServiceOrderStatus.PENDING.value
                 self._db.add(order)
+        # Desvincula o histórico das OS: se o id for reciclado num novo separador,
+        # as OS antigas não podem "reaparecer" no histórico do novo.
+        self._db.execute(
+            update(ServiceOrder)
+            .where(ServiceOrder.completed_by_robot_id == robot_id)
+            .values(completed_by_robot_id=None)
+        )
+        self._db.execute(
+            update(ServiceOrder)
+            .where(ServiceOrder.cancelled_by_robot_id == robot_id)
+            .values(cancelled_by_robot_id=None)
+        )
         self._db.delete(robot)
         self._db.commit()
         return True

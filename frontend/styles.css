@@ -2814,8 +2814,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .relatorio-batch-formats__grid {
-  grid-template-columns: repeat(2, 1fr);
-  max-width: 16rem;
+  grid-template-columns: repeat(3, 1fr);
+  max-width: min(100%, 26rem);
   margin-left: auto;
   margin-right: auto;
 }

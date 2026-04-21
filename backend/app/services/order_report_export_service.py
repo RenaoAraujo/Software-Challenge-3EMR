@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -32,37 +33,130 @@ _pdf_jinja_env: Environment | None = None
 
 
 def _pdf_logos_files_exist() -> bool:
-    return (_IMG_DIR / "SofttekLogo-4web.svg").is_file() and (_IMG_DIR / "logo_apsen.svg").is_file()
+    return (_IMG_DIR / "logo_apsen.svg").is_file()
 
 
-def _svg_file_to_png_data_uri(svg_path: Path) -> str | None:
-    """Rasteriza SVG → PNG (mesma pilha do xhtml2pdf); data URI é mais fiável que <img src=.svg>."""
-    try:
-        from xhtml2pdf.xhtml2pdf_reportlab import PmlImage
-    except ImportError:
-        return None
+def _flatten_svg_css_classes(svg_text: str) -> str:
+    """Substitui `class="nome"` por atributos inline (fill/stroke/opacity/…).
+
+    svglib tem suporte limitado a CSS em `<style>` — classes como `.st0{fill:#FFFFFF}`
+    acabam ignoradas e os paths saem sem cor. Este pré-processamento coleta as regras
+    simples por classe e as aplica diretamente em cada elemento que as usa.
+    """
+    style_blocks = re.findall(r"<style[^>]*>([\s\S]*?)</style>", svg_text, flags=re.IGNORECASE)
+    rules: dict[str, dict[str, str]] = {}
+    for block in style_blocks:
+        for m in re.finditer(r"\.([\w-]+)\s*\{([^}]*)\}", block):
+            name = m.group(1)
+            body = m.group(2)
+            decls: dict[str, str] = {}
+            for decl in body.split(";"):
+                if ":" in decl:
+                    k, v = decl.split(":", 1)
+                    k = k.strip().lower()
+                    v = v.strip()
+                    if k and v:
+                        decls[k] = v
+            if decls:
+                rules.setdefault(name, {}).update(decls)
+    if not rules:
+        return svg_text
+
+    def _repl(m: re.Match[str]) -> str:
+        names = m.group(1).split()
+        merged: dict[str, str] = {}
+        for n in names:
+            merged.update(rules.get(n, {}))
+        if not merged:
+            return m.group(0)
+        return " ".join(f'{k}="{v}"' for k, v in merged.items())
+
+    return re.sub(r'class="([^"]+)"', _repl, svg_text)
+
+
+# Cor de fundo "queimada" nos PNGs dos logos — mesma do cartão azul do cabeçalho.
+# Os SVGs são brancos e foram desenhados para aparecer sobre fundo escuro; embutir o fundo
+# diretamente no PNG é mais confiável do que tentar transparência em xhtml2pdf.
+_PDF_LOGO_BG_COLOR = 0x005A9C
+
+
+def _svg_file_to_png_data_uri(
+    svg_path: Path,
+    *,
+    target_height_px: int = 140,
+    bg_color: int = _PDF_LOGO_BG_COLOR,
+    pad_px: int = 16,
+) -> str | None:
+    """Rasteriza SVG → PNG (via svglib + reportlab) e embute como data URI.
+
+    xhtml2pdf não suporta SVG nativamente, então uma imagem `<img src="...svg">`
+    aparece em branco. Esta conversão garante que o logo seja visível no PDF.
+    Como os logos são brancos (desenhados para fundo escuro), o PNG é rasterizado
+    sobre um fundo azul equivalente ao do cartão do cabeçalho.
+    """
     if not svg_path.is_file():
         return None
     try:
-        raw = svg_path.read_bytes()
-        pm = PmlImage(raw, src=svg_path.name)
-        raster = pm.getDrawingRaster()
-        if raster is None:
+        from reportlab.graphics import renderPM
+        from svglib.svglib import svg2rlg
+    except ImportError:
+        return None
+    try:
+        raw = svg_path.read_text(encoding="utf-8")
+        flat = _flatten_svg_css_classes(raw)
+        drawing = svg2rlg(io.BytesIO(flat.encode("utf-8")))
+        if drawing is None:
             return None
-        b64 = base64.b64encode(raster.getvalue()).decode("ascii")
+        # Escala o desenho para uma altura alvo, mantendo a proporção — o PNG gerado fica
+        # com resolução suficiente para o logo no cabeçalho sem serrilhado.
+        d_w = float(getattr(drawing, "width", 0) or 0)
+        d_h = float(getattr(drawing, "height", 0) or 0)
+        if d_h > 0:
+            scale = float(target_height_px) / d_h
+            drawing.width = d_w * scale
+            drawing.height = d_h * scale
+            drawing.scale(scale, scale)
+        png_bytes = renderPM.drawToString(drawing, fmt="PNG", bg=bg_color)
+        if not png_bytes:
+            return None
+        if pad_px > 0:
+            png_bytes = _png_add_padding(png_bytes, pad_px=pad_px, bg_color=bg_color)
+        b64 = base64.b64encode(png_bytes).decode("ascii")
         return f"data:image/png;base64,{b64}"
     except Exception:
         return None
 
 
+def _png_add_padding(png_bytes: bytes, *, pad_px: int, bg_color: int) -> bytes:
+    """Adiciona uma margem de respiro ao redor do logo preservando a cor de fundo."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return png_bytes
+    try:
+        img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+        w, h = img.size
+        r = (bg_color >> 16) & 0xFF
+        g = (bg_color >> 8) & 0xFF
+        b = bg_color & 0xFF
+        canvas = Image.new("RGB", (w + 2 * pad_px, h + 2 * pad_px), (r, g, b))
+        canvas.paste(img, (pad_px, pad_px))
+        out = io.BytesIO()
+        canvas.save(out, format="PNG")
+        return out.getvalue()
+    except Exception:
+        return png_bytes
+
+
 def _pdf_logo_image_srcs() -> tuple[str | None, str | None]:
-    """Preferir PNG inline; fallback para ficheiros relativos + path no CreatePDF."""
-    s_softtek = _svg_file_to_png_data_uri(_IMG_DIR / "SofttekLogo-4web.svg")
-    s_apsen = _svg_file_to_png_data_uri(_IMG_DIR / "logo_apsen.svg")
-    if s_softtek and s_apsen:
-        return s_softtek, s_apsen
-    if _pdf_logos_files_exist():
-        return "SofttekLogo-4web.svg", "logo_apsen.svg"
+    """Sempre embute como PNG; sem fallback para SVG puro (xhtml2pdf não renderiza).
+
+    Retornamos uma tupla (_, apsen) mantendo a assinatura para o contexto do template,
+    mas só a logo da Apsen é renderizada no cabeçalho.
+    """
+    s_apsen = _svg_file_to_png_data_uri(_IMG_DIR / "logo_apsen.svg", target_height_px=260)
+    if s_apsen:
+        return None, s_apsen
     return None, None
 
 
@@ -104,7 +198,7 @@ def _order_report_pdf_context(
 ) -> dict:
     """Contexto para o template Jinja2 do PDF (A4, HTML)."""
     data_fmt = item.data.strftime("%d/%m/%Y") if item.data else "—"
-    logo_softtek_src, logo_apsen_src = _pdf_logo_image_srcs()
+    _, logo_apsen_src = _pdf_logo_image_srcs()
     nome_sep = (item.separador_nome or "").strip() or "—"
     # Código do robô (ex.: RB-01) vem do cadastro; coincide com separador_codigo em order_to_report_item.
     rc = (item.separador_codigo or "").strip()
@@ -114,8 +208,7 @@ def _order_report_pdf_context(
         else (str(item.robot_id) if item.robot_id is not None else "—")
     )
     return {
-        "has_pdf_logos": logo_softtek_src is not None and logo_apsen_src is not None,
-        "logo_softtek_src": logo_softtek_src or "",
+        "has_pdf_logos": logo_apsen_src is not None,
         "logo_apsen_src": logo_apsen_src or "",
         "data_fmt": data_fmt,
         "os_code": item.os_code,
@@ -526,6 +619,12 @@ def _row_cells(
         mnum = med.numero
         mt = med.tempo_gasto
         mest = _situacao_linha_remedio_label(med.situacao_coleta)
+    # Tempo médio por remédio só faz sentido quando aquele remédio foi, de fato, concluído.
+    tempo_medio_cell = (
+        (item.tempo_medio_por_remedio or "")
+        if med is not None and med.situacao_coleta == "concluida"
+        else ""
+    )
     base: list[str | int] = [
         data_str,
         item.os_code,
@@ -544,7 +643,7 @@ def _row_cells(
         item.porcentagem_conclusao or "",
         item.tempo_total_separacao or "",
         item.tempo_liquido_separacao or "",
-        item.tempo_medio_por_remedio or "",
+        tempo_medio_cell,
         mest,
         _situacao_label(item.situacao),
     ]
@@ -578,6 +677,12 @@ def _row_cells_batch(
         mnum = med.numero
         mt = med.tempo_gasto
         mest = _situacao_linha_remedio_label(med.situacao_coleta)
+    # Tempo médio por remédio só faz sentido quando aquele remédio foi, de fato, concluído.
+    tempo_medio_cell = (
+        (item.tempo_medio_por_remedio or "")
+        if med is not None and med.situacao_coleta == "concluida"
+        else ""
+    )
     base: list[str | int] = [
         data_str,
         item.os_code,
@@ -596,7 +701,7 @@ def _row_cells_batch(
         item.porcentagem_conclusao or "",
         item.tempo_total_separacao or "",
         item.tempo_liquido_separacao or "",
-        item.tempo_medio_por_remedio or "",
+        tempo_medio_cell,
         mest,
         _situacao_label(item.situacao),
     ]
@@ -625,20 +730,45 @@ def _all_rows_batch(
 
 def export_batch_order_reports_bytes(
     items: list[OrderReportItem],
-    fmt: Literal["csv", "xlsx"],
+    fmt: Literal["csv", "xlsx", "pdf"],
     *,
     exportado_por: str,
     data_exportacao: str,
     filename_base: str,
 ) -> tuple[bytes, str, str]:
-    """Várias OS num único CSV ou XLSX (uma folha, um cabeçalho)."""
+    """
+    Várias OS num único CSV/XLSX (uma folha, um cabeçalho) ou um ZIP com um PDF por OS.
+    """
+    safe = _safe_filename_fragment(filename_base)
+
+    if fmt == "pdf":
+        bio = io.BytesIO()
+        used_names: set[str] = set()
+        with zipfile.ZipFile(bio, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for item in items:
+                pdf_bytes = _render_order_report_pdf_bytes(
+                    item,
+                    exportado_por=exportado_por,
+                    data_exportacao=data_exportacao,
+                )
+                base = _safe_filename_fragment(item.os_code)
+                name = f"relatorio_{base}.pdf"
+                # Garante nomes únicos no ZIP mesmo se duas OS tiverem o mesmo código "limpo".
+                if name in used_names:
+                    n = 2
+                    while f"relatorio_{base}_{n}.pdf" in used_names:
+                        n += 1
+                    name = f"relatorio_{base}_{n}.pdf"
+                used_names.add(name)
+                zf.writestr(name, pdf_bytes)
+        return bio.getvalue(), "application/zip", f"{safe}.zip"
+
     headers = _headers_batch()
     rows = _all_rows_batch(
         items,
         exportado_por=exportado_por,
         data_exportacao=data_exportacao,
     )
-    safe = _safe_filename_fragment(filename_base)
 
     if fmt == "csv":
         buf = io.StringIO()
