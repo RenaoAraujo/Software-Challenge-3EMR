@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import csv
+from collections import Counter
 import functools
 import io
 import json
@@ -73,6 +74,18 @@ def _pdf_img_base_path() -> str:
     return p
 
 
+def _pdf_medicamentos_por_classe(item: OrderReportItem) -> list[dict[str, str | int]]:
+    """Contagem de medicamentos por classe (PDF): coluna classe + quantidade de itens."""
+    counts: Counter[str] = Counter()
+    for ml in item.medicine_lines:
+        key = (ml.classe_remedio or "").strip() or "—"
+        counts[key] += 1
+    return [
+        {"classe": k, "quantidade": counts[k]}
+        for k in sorted(counts.keys(), key=lambda x: x.lower())
+    ]
+
+
 def _get_pdf_jinja_env() -> Environment:
     global _pdf_jinja_env
     if _pdf_jinja_env is None:
@@ -113,15 +126,57 @@ def _order_report_pdf_context(
         "quantidade_separada": item.quantidade_separada,
         "porcentagem_conclusao": item.porcentagem_conclusao or "",
         "tempo_total_separacao": item.tempo_total_separacao or "",
+        "tempo_liquido_separacao": item.tempo_liquido_separacao or "",
         "tempo_medio_por_remedio": item.tempo_medio_por_remedio or "",
         "numero_pausas": item.numero_pausas,
         "status_label": _situacao_label(item.situacao),
+        "status_upper": _situacao_label_upper(item.situacao),
         "situacao": item.situacao,
         "erro_descricao": item.erro_descricao or "",
         "erro_codigo": item.erro_codigo or "",
         "exportado_por": exportado_por,
         "data_exportacao": data_exportacao,
+        "medicamentos_por_classe": _pdf_medicamentos_por_classe(item),
     }
+
+
+def _stamp_pdf_page_marks(pdf_bytes: bytes) -> bytes:
+    """Carimba «Página N de M» no canto inferior direito de **cada** folha (o fluxo HTML só pinta na última)."""
+    try:
+        from pypdf import PdfReader, PdfWriter
+        from reportlab.lib.units import mm
+        from reportlab.pdfgen import canvas
+    except ImportError:
+        return pdf_bytes
+    src_buf = io.BytesIO(pdf_bytes)
+    try:
+        reader = PdfReader(src_buf)
+    except Exception:
+        return pdf_bytes
+    n = len(reader.pages)
+    if n == 0:
+        return pdf_bytes
+    writer = PdfWriter()
+    for idx in range(n):
+        page = reader.pages[idx]
+        media = page.mediabox
+        w = float(media.width)
+        h = float(media.height)
+        packet = io.BytesIO()
+        c = canvas.Canvas(packet, pagesize=(w, h))
+        c.setFont("Helvetica", 8.5)
+        c.setFillColorRGB(0.39, 0.45, 0.51)
+        label = f"Página {idx + 1} de {n}"
+        m = 12 * mm
+        c.drawRightString(w - m, m, label)
+        c.save()
+        packet.seek(0)
+        overlay = PdfReader(packet)
+        page.merge_page(overlay.pages[0])
+        writer.add_page(page)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
 
 
 def _render_order_report_pdf_bytes(
@@ -151,7 +206,7 @@ def _render_order_report_pdf_bytes(
     raw = buf.getvalue()
     if not raw:
         raise RuntimeError("PDF gerado está vazio.")
-    return raw
+    return _stamp_pdf_page_marks(raw)
 
 
 _REPORT_HEADERS_BASE = [
@@ -171,6 +226,7 @@ _REPORT_HEADERS_BASE = [
     "Tempo Gasto",
     "Porcentagem de conclusão",
     "Tempo total da separação",
+    "Tempo líquido da separação",
     "Tempo Médio por Remédio",
     "Status do Remédio",
     "Status da operação",
@@ -222,6 +278,19 @@ def _wall_seconds_total(order: ServiceOrder) -> float | None:
     return None
 
 
+def _liquid_seconds(order: ServiceOrder) -> float | None:
+    """Tempo efetivo (relógio menos pausas), em segundos; None se não for possível calcular."""
+    wall = _wall_seconds_total(order)
+    if wall is None:
+        return None
+    ps = order.total_pause_seconds
+    if ps is None:
+        if int(order.pause_count or 0) == 0:
+            return float(wall)
+        return None
+    return max(0.0, float(wall) - float(max(0, int(ps))))
+
+
 def _medicine_entries_from_order(order: ServiceOrder) -> list[tuple[str, str, str]]:
     """
     Lista (nome, tipo, classe) a partir de medicines_json.
@@ -266,27 +335,26 @@ def _porcentagem_str(quantidade_total: int, quantidade_separada: int) -> str:
 
 
 def _tempo_segundos_por_unidade(order: ServiceOrder) -> float | None:
-    """Segundos por unidade (intervalo / unidades)."""
+    """Segundos por unidade (tempo líquido / unidades, quando disponível)."""
     if order.status == ServiceOrderStatus.COMPLETED.value:
-        if not order.assigned_at or not order.completed_at:
-            return None
         cu = int(order.completed_units or 0)
         if cu <= 0:
             return None
-        a = _normalize_utc(order.assigned_at)
-        c = _normalize_utc(order.completed_at)
-        sec = (c - a).total_seconds()
-        if sec < 0:
+        liq = _liquid_seconds(order)
+        if liq is None:
             return None
-        return float(sec) / float(cu)
+        return float(liq) / float(cu)
 
     if order.status == ServiceOrderStatus.CANCELLED.value:
         if order.cancelled_avg_seconds_per_unit is not None:
             return float(order.cancelled_avg_seconds_per_unit)
         u = int(order.cancelled_separated_units or 0)
-        if order.cancelled_wall_seconds is None or u <= 0:
+        if u <= 0:
             return None
-        return float(order.cancelled_wall_seconds) / float(u)
+        liq = _liquid_seconds(order)
+        if liq is None:
+            return None
+        return float(liq) / float(u)
 
     return None
 
@@ -336,7 +404,9 @@ def order_to_report_item(db: Session, order: ServiceOrder) -> OrderReportItem | 
 
     sep_codigo = (codes.get(rid) if rid is not None else None) or ""
     wall_s = _wall_seconds_total(order)
+    liquid_s = _liquid_seconds(order)
     tempo_total_str = _format_seconds_as_min_sec(wall_s)
+    tempo_liquido_str = _format_seconds_as_min_sec(liquid_s)
     tempo_s = _tempo_segundos_por_unidade(order)
     tempo_medio_str = _format_seconds_as_min_sec(tempo_s)
 
@@ -344,8 +414,8 @@ def order_to_report_item(db: Session, order: ServiceOrder) -> OrderReportItem | 
     n_med = len(entries)
     medicine_lines: list[MedicineReportLine] = []
     if situacao == "concluida":
-        if n_med > 0 and wall_s is not None:
-            per = wall_s / float(n_med)
+        if n_med > 0 and liquid_s is not None:
+            per = liquid_s / float(n_med)
             for i, (name, tipo, classe) in enumerate(entries):
                 med_num = i + 1
                 medicine_lines.append(
@@ -413,11 +483,16 @@ def order_to_report_item(db: Session, order: ServiceOrder) -> OrderReportItem | 
         robot_id=rid,
         porcentagem_conclusao=_porcentagem_str(quantidade_total, quantidade_separada),
         tempo_total_separacao=tempo_total_str,
+        tempo_liquido_separacao=tempo_liquido_str,
     )
 
 
 def _situacao_label(s: Literal["concluida", "cancelada"]) -> str:
     return "Concluída" if s == "concluida" else "Cancelada"
+
+
+def _situacao_label_upper(s: Literal["concluida", "cancelada"]) -> str:
+    return "CONCLUÍDA" if s == "concluida" else "CANCELADA"
 
 
 def _situacao_linha_remedio_label(s: Literal["concluida", "cancelada"]) -> str:
@@ -468,6 +543,7 @@ def _row_cells(
         mt,
         item.porcentagem_conclusao or "",
         item.tempo_total_separacao or "",
+        item.tempo_liquido_separacao or "",
         item.tempo_medio_por_remedio or "",
         mest,
         _situacao_label(item.situacao),
@@ -519,6 +595,7 @@ def _row_cells_batch(
         mt,
         item.porcentagem_conclusao or "",
         item.tempo_total_separacao or "",
+        item.tempo_liquido_separacao or "",
         item.tempo_medio_por_remedio or "",
         mest,
         _situacao_label(item.situacao),

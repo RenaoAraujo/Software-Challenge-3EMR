@@ -101,6 +101,8 @@ class ServiceOrder(Base):
     cancel_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Duração total (atribuição → cancelamento), em segundos; gravada no cancelamento antes de limpar assigned_at.
     cancelled_wall_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Soma dos segundos em pausa durante a execução (gravada ao concluir ou cancelar).
+    total_pause_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

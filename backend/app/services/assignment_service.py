@@ -102,6 +102,7 @@ class AssignmentService:
         order.status = ServiceOrderStatus.IN_PROGRESS.value
         order.assigned_at = now
         order.pause_count = 0
+        order.total_pause_seconds = None
 
         self._db.add(robot)
         self._db.add(order)
@@ -116,6 +117,7 @@ class AssignmentService:
         order.cancelled_wall_seconds = None
         order.cancel_error_description = None
         order.cancel_error_code = None
+        order.total_pause_seconds = None
         order.status = ServiceOrderStatus.PENDING.value
 
     def _reactivate_cancelled_manual_order(

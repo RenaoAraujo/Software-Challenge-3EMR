@@ -1894,6 +1894,34 @@ input[type="number"]::-webkit-inner-spin-button {
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+.modal__panel--cancel-os {
+  width: min(100%, 28rem);
+  padding: 1.85rem 1.65rem 1.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+.modal__panel--cancel-os .modal__title {
+  margin: 0 0 0.15rem;
+}
+
+.modal__panel--cancel-os .field {
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.modal__panel--cancel-os .modal__actions {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  gap: 0.65rem;
+}
+
+/* .field usa display:flex e pode sobrepor [hidden] do UA — esconder bloco “Outros” com classe */
+#cancel-os-modal .cancel-os-detail--hidden {
+  display: none !important;
+}
+
 .modal__panel--form {
   width: min(100%, 28rem);
   max-height: calc(100dvh - 2.5rem);
@@ -2674,10 +2702,6 @@ input[type="number"]::-webkit-inner-spin-button {
   max-height: min(94vh, 52rem);
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-.relatorio-batch-bulk-actions {
-  margin: 0 0 0.65rem;
 }
 
 .relatorio-batch-preview {

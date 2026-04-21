@@ -19,6 +19,8 @@
   const REMEDY_SIM_ROBOT_KEY = "emr-remedy-sim-robot-id";
   const REMEDY_SIM_TARGET_KEY = "emr-remedy-sim-target-units";
   const FETCH_CRED = { credentials: "include", cache: "no-store" };
+  /** Exibição de instantes vindos da API (gravados em UTC) no fuso brasileiro. */
+  const DISPLAY_TIMEZONE_BR = "America/Sao_Paulo";
 
   const el = {
     connStatus: document.getElementById("conn-status"),
@@ -108,6 +110,12 @@
     btnPausarOs: document.getElementById("btn-pausar-os"),
     btnRetomarOs: document.getElementById("btn-retomar-os"),
     btnCancelarOs: document.getElementById("btn-cancelar-os"),
+    cancelOsModal: document.getElementById("cancel-os-modal"),
+    cancelOsReason: document.getElementById("cancel-os-reason"),
+    cancelOsDetailWrap: document.getElementById("cancel-os-detail-wrap"),
+    cancelOsDetail: document.getElementById("cancel-os-detail"),
+    cancelOsModalCancel: document.getElementById("cancel-os-modal-cancel"),
+    cancelOsModalConfirm: document.getElementById("cancel-os-modal-confirm"),
     tabOperacao: document.getElementById("tab-operacao"),
     tabHistorico: document.getElementById("tab-historico"),
     tabRelatorio: document.getElementById("tab-relatorio"),
@@ -169,9 +177,9 @@
     relatorioBatchSituacao: document.getElementById("relatorio-batch-situacao"),
     relatorioBatchNomeSeparador: document.getElementById("relatorio-batch-nome-separador"),
     relatorioBatchCodigoSeparador: document.getElementById("relatorio-batch-codigo-separador"),
+    relatorioBatchFiltroBaixado: document.getElementById("relatorio-batch-filtro-baixado"),
     relatorioBatchDownload: document.getElementById("relatorio-batch-download"),
     relatorioBatchPreview: document.getElementById("relatorio-batch-preview"),
-    btnRelatorioBatchIncludeAllFilter: document.getElementById("btn-relatorio-batch-include-all-filter"),
   };
 
   let csrfToken = "";
@@ -198,6 +206,11 @@
   let editModalPreviousFocus = null;
   let newRobotModalPreviousFocus = null;
   let manualOsModalPreviousFocus = null;
+  let cancelOsModalPreviousFocus = null;
+  /** Pausa polling da lista/detalhe enquanto o modal de cancelamento está aberto */
+  let cancelModalPausedBackground = false;
+  /** Alinhado a `app.constants.cancellation_reasons.OUTROS_CODE` */
+  const CANCEL_OUTROS_CODE = "OUTROS";
   let notifItems = [];
   let notifBaselineDone = false;
   let notifPollTimer = null;
@@ -354,6 +367,13 @@
   async function remedySimulationStep(robotId, targetUnits) {
     const rid = Number(robotId);
     const tgt = Math.max(1, Number(targetUnits) || 1);
+    if (isCancelOsModalOpen()) {
+      const tid = setTimeout(() => {
+        void remedySimulationStep(rid, tgt);
+      }, 600);
+      remedySimTimers.set(rid, tid);
+      return;
+    }
     const outcome = await runRemedySimulationTick(rid, tgt);
     if (outcome === "stopped") {
       return;
@@ -489,7 +509,8 @@
       (!el.newRobotModal || el.newRobotModal.hidden) &&
       (!el.manualOsModal || el.manualOsModal.hidden) &&
       (!el.clearLogsModal || el.clearLogsModal.hidden) &&
-      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden)
+      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden) &&
+      (!el.cancelOsModal || el.cancelOsModal.hidden)
     ) {
       document.body.classList.remove("modal-open");
     }
@@ -503,6 +524,121 @@
     deleteModalPreviousFocus = null;
   }
 
+  function syncCancelOsDetailVisibility() {
+    if (!el.cancelOsReason || !el.cancelOsDetailWrap) return;
+    const isOutros = el.cancelOsReason.value === CANCEL_OUTROS_CODE;
+    el.cancelOsDetailWrap.classList.toggle("cancel-os-detail--hidden", !isOutros);
+    if (el.cancelOsDetail) {
+      el.cancelOsDetail.disabled = !isOutros;
+      if (!isOutros) el.cancelOsDetail.value = "";
+    }
+  }
+
+  function pauseOperacaoBackgroundForCancelModal() {
+    if (cancelModalPausedBackground) return;
+    cancelModalPausedBackground = true;
+    clearDetailPollTimer();
+    clearDetailElapsedDisplayTimer();
+    if (listPollTimer != null) {
+      clearInterval(listPollTimer);
+      listPollTimer = null;
+    }
+    /* Simulação de unidades: parar ticks — os jobs ficam no sessionStorage e voltam ao fechar o modal */
+    clearAllRemedySimulationTimers();
+  }
+
+  function resumeOperacaoBackgroundAfterCancelModal() {
+    if (!cancelModalPausedBackground) return;
+    cancelModalPausedBackground = false;
+    ensureOperacaoListPoll();
+    if (selectedRobotId != null) {
+      void loadRobotDetail(selectedRobotId);
+    }
+    ensureRemedySimulationsRunning();
+  }
+
+  function closeCancelOsModal() {
+    if (!el.cancelOsModal) return;
+    el.cancelOsModal.hidden = true;
+    el.cancelOsModal.setAttribute("aria-hidden", "true");
+    if (el.cancelOsDetail) el.cancelOsDetail.value = "";
+    resumeOperacaoBackgroundAfterCancelModal();
+    if (
+      el.deleteModal.hidden &&
+      el.editModal.hidden &&
+      (!el.newRobotModal || el.newRobotModal.hidden) &&
+      (!el.manualOsModal || el.manualOsModal.hidden) &&
+      (!el.clearLogsModal || el.clearLogsModal.hidden) &&
+      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden) &&
+      (!el.relatorioBatchModal || el.relatorioBatchModal.hidden)
+    ) {
+      document.body.classList.remove("modal-open");
+    }
+    if (cancelOsModalPreviousFocus && typeof cancelOsModalPreviousFocus.focus === "function") {
+      try {
+        cancelOsModalPreviousFocus.focus();
+      } catch {
+        /* ignore */
+      }
+    }
+    cancelOsModalPreviousFocus = null;
+  }
+
+  async function openCancelOsModal() {
+    if (!el.cancelOsModal || selectedRobotId == null) return;
+    if (!el.cancelOsModal.hidden) return;
+    pauseOperacaoBackgroundForCancelModal();
+    cancelOsModalPreviousFocus = document.activeElement;
+    try {
+      await fetchCsrf();
+      const res = await fetch(`${API_BASE}/robots/cancellation-reasons`, FETCH_CRED);
+      if (res.status === 401) {
+        resumeOperacaoBackgroundAfterCancelModal();
+        window.location.replace("/login.html");
+        return;
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = `Erro ${res.status}`;
+        try {
+          const err = JSON.parse(text);
+          msg = formatApiDetail(err.detail) || text || msg;
+        } catch {
+          if (text) msg = text;
+        }
+        toast(msg, "error");
+        cancelOsModalPreviousFocus = null;
+        resumeOperacaoBackgroundAfterCancelModal();
+        return;
+      }
+      const reasons = await res.json();
+      if (!Array.isArray(reasons) || reasons.length === 0) {
+        toast("Lista de motivos indisponível.", "error");
+        cancelOsModalPreviousFocus = null;
+        resumeOperacaoBackgroundAfterCancelModal();
+        return;
+      }
+      el.cancelOsReason.innerHTML = "";
+      for (const r of reasons) {
+        const opt = document.createElement("option");
+        opt.value = r.code;
+        opt.textContent = r.label;
+        el.cancelOsReason.appendChild(opt);
+      }
+      el.cancelOsReason.value = reasons[0].code;
+      if (el.cancelOsDetail) el.cancelOsDetail.value = "";
+      syncCancelOsDetailVisibility();
+      el.cancelOsModal.hidden = false;
+      el.cancelOsModal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+      el.cancelOsReason.focus();
+    } catch (e) {
+      cancelOsModalPreviousFocus = null;
+      resumeOperacaoBackgroundAfterCancelModal();
+      toast(e instanceof Error ? e.message : "Erro ao abrir cancelamento.", "error");
+    }
+  }
+
   function closeEditModal() {
     el.editModal.hidden = true;
     el.editModal.setAttribute("aria-hidden", "true");
@@ -512,7 +648,8 @@
       (!el.newRobotModal || el.newRobotModal.hidden) &&
       (!el.manualOsModal || el.manualOsModal.hidden) &&
       (!el.clearLogsModal || el.clearLogsModal.hidden) &&
-      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden)
+      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden) &&
+      (!el.cancelOsModal || el.cancelOsModal.hidden)
     ) {
       document.body.classList.remove("modal-open");
     }
@@ -535,7 +672,8 @@
       el.editModal.hidden &&
       (!el.manualOsModal || el.manualOsModal.hidden) &&
       (!el.clearLogsModal || el.clearLogsModal.hidden) &&
-      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden)
+      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden) &&
+      (!el.cancelOsModal || el.cancelOsModal.hidden)
     ) {
       document.body.classList.remove("modal-open");
     }
@@ -601,7 +739,8 @@
       el.editModal.hidden &&
       (!el.newRobotModal || el.newRobotModal.hidden) &&
       (!el.clearLogsModal || el.clearLogsModal.hidden) &&
-      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden)
+      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden) &&
+      (!el.cancelOsModal || el.cancelOsModal.hidden)
     ) {
       document.body.classList.remove("modal-open");
     }
@@ -690,7 +829,8 @@
       el.editModal.hidden &&
       (!el.newRobotModal || el.newRobotModal.hidden) &&
       (!el.manualOsModal || el.manualOsModal.hidden) &&
-      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden)
+      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden) &&
+      (!el.cancelOsModal || el.cancelOsModal.hidden)
     ) {
       document.body.classList.remove("modal-open");
     }
@@ -743,7 +883,8 @@
       (!el.newRobotModal || el.newRobotModal.hidden) &&
       (!el.manualOsModal || el.manualOsModal.hidden) &&
       (!el.clearLogsModal || el.clearLogsModal.hidden) &&
-      (!el.relatorioBatchModal || el.relatorioBatchModal.hidden)
+      (!el.relatorioBatchModal || el.relatorioBatchModal.hidden) &&
+      (!el.cancelOsModal || el.cancelOsModal.hidden)
     ) {
       document.body.classList.remove("modal-open");
     }
@@ -879,84 +1020,18 @@
     return params;
   }
 
-  async function relatorioBatchIncludeAllOrdersFromCurrentFilter() {
-    const de = el.relatorioBatchDe?.value?.trim() || "";
-    const ate = el.relatorioBatchAte?.value?.trim() || "";
-    if ((de && !ate) || (!de && ate)) {
-      toast("Preencha data inicial e final juntas, ou deixe as duas em branco.", "error");
-      return;
+  /** Filtro client-side: estado de download guardado em localStorage (não vai ao servidor). */
+  function filterRelatorioBatchItemsByDownloadStatus(rawItems, mode, downloadedSet) {
+    if (!mode || mode === "") return rawItems;
+    const out = [];
+    for (const row of rawItems) {
+      const oid = Number(row.id);
+      if (!Number.isFinite(oid)) continue;
+      const isDl = downloadedSet.has(oid);
+      if (mode === "baixado" && isDl) out.push(row);
+      else if (mode === "nao_baixado" && !isDl) out.push(row);
     }
-    const btn = el.btnRelatorioBatchIncludeAllFilter;
-    if (btn) btn.disabled = true;
-    let added = 0;
-    let totalReported = 0;
-    try {
-      const chunk = RELATORIO_BATCH_PREVIEW_LIMIT;
-      let offset = 0;
-      let first = true;
-      for (;;) {
-        const params = new URLSearchParams({
-          limit: String(chunk),
-          offset: String(offset),
-          preview: "true",
-        });
-        relatorioBatchAppendFiltersToSearchParams(params);
-        const res = await fetch(`${API_BASE}/service-orders/completed?${params.toString()}`, FETCH_CRED);
-        if (res.status === 401) {
-          window.location.replace("/login.html");
-          return;
-        }
-        const text = await res.text();
-        if (!res.ok) {
-          let msg = `Erro ${res.status}`;
-          try {
-            const err = JSON.parse(text);
-            msg = formatApiDetail(err.detail) || text || msg;
-          } catch {
-            if (text) msg = text;
-          }
-          toast(msg, "error");
-          return;
-        }
-        const data = JSON.parse(text);
-        totalReported = Number(data.total) || 0;
-        if (first && totalReported === 0) {
-          toast("Nenhuma ordem encerrada para estes filtros.", "error");
-          return;
-        }
-        first = false;
-        const items = Array.isArray(data.items) ? data.items : [];
-        for (const row of items) {
-          const id = Number(row.id);
-          if (!Number.isFinite(id)) continue;
-          if (!relatorioBatchSelectedOrderIds.has(id)) {
-            relatorioBatchSelectedOrderIds.add(id);
-            added += 1;
-          }
-        }
-        if (items.length === 0) break;
-        if (items.length < chunk) break;
-        offset += chunk;
-        if (offset >= totalReported) break;
-      }
-      const totalSel = relatorioBatchSelectedOrderIds.size;
-      if (added > 0) {
-        toast(
-          `${formatHistoricoNum(added)} ordem${added === 1 ? "" : "ens"} adicionada${added === 1 ? "" : "s"} à seleção (${formatHistoricoNum(totalSel)} no total).`,
-          "success",
-        );
-      } else {
-        toast(
-          `Todas as ${formatHistoricoNum(totalReported)} ordem${totalReported === 1 ? "" : "ens"} deste filtro já estavam na seleção (${formatHistoricoNum(totalSel)} no total).`,
-          "success",
-        );
-      }
-      void loadRelatorioBatchPreview();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : "Falha ao listar ordens.", "error");
-    } finally {
-      if (btn) btn.disabled = false;
-    }
+    return out;
   }
 
   function syncRelatorioBatchSelectAllCheckbox() {
@@ -1055,22 +1130,35 @@
     if (!container) return;
     const total = Number(data.total) || 0;
     relatorioBatchPreviewTotalCount = total;
-    const items = Array.isArray(data.items) ? data.items : [];
+    const rawItems = Array.isArray(data.items) ? data.items : [];
+    const dlMode = el.relatorioBatchFiltroBaixado?.value?.trim() || "";
     const downloadedSet = getRelatorioDownloadedSet();
+    const items = filterRelatorioBatchItemsByDownloadStatus(rawItems, dlMode, downloadedSet);
+    const pageLen = rawItems.length;
     const nf = new Intl.NumberFormat("pt-BR");
     const nSel = relatorioBatchSelectedOrderIds.size;
     const selHint =
       nSel > 0
         ? ` ${formatHistoricoNum(nSel)} ordem${nSel === 1 ? "" : "ens"} selecionada${nSel === 1 ? "" : "s"} para o ficheiro (acumulado ao mudar os filtros).`
         : "";
-    const metaExtra =
-      total > items.length
-        ? ` Mostrando as primeiras ${formatHistoricoNum(items.length)} de ${formatHistoricoNum(total)} ordens neste filtro. Marque as linhas desejadas; a seleção mantém-se se pesquisar outro cliente.${selHint}`
-        : total > 0
-          ? ` ${formatHistoricoNum(total)} ${total === 1 ? "ordem" : "ordens"} neste filtro. Marque as que quer incluir no ficheiro; pode acumular seleções ao alterar os critérios.${selHint}`
+    const dlNote =
+      dlMode === "baixado"
+        ? ` Filtro: já baixado neste navegador — ${formatHistoricoNum(items.length)} de ${formatHistoricoNum(pageLen)} ordens nesta página.`
+        : dlMode === "nao_baixado"
+          ? ` Filtro: ainda não baixado — ${formatHistoricoNum(items.length)} de ${formatHistoricoNum(pageLen)} ordens nesta página.`
           : "";
-    if (items.length === 0) {
+    const metaExtra =
+      total > pageLen
+        ? ` Mostrando as primeiras ${formatHistoricoNum(pageLen)} de ${formatHistoricoNum(total)} ordens neste filtro.${dlNote} Marque as linhas desejadas; a seleção mantém-se se pesquisar outro cliente.${selHint}`
+        : total > 0
+          ? ` ${formatHistoricoNum(total)} ${total === 1 ? "ordem" : "ordens"} neste filtro.${dlNote} Marque as que quer incluir no ficheiro; pode acumular seleções ao alterar os critérios.${selHint}`
+          : "";
+    if (pageLen === 0) {
       container.innerHTML = `<p class="historico-empty" role="status">Nenhuma ordem encerrada para estes filtros.</p>`;
+      return;
+    }
+    if (items.length === 0) {
+      container.innerHTML = `<p class="historico-empty" role="status">Nenhuma ordem nesta página corresponde ao filtro de download escolhido. Tente «Todos» ou ajuste os outros filtros.</p>`;
       return;
     }
     const rows = items
@@ -1212,7 +1300,8 @@
       (!el.newRobotModal || el.newRobotModal.hidden) &&
       (!el.manualOsModal || el.manualOsModal.hidden) &&
       (!el.clearLogsModal || el.clearLogsModal.hidden) &&
-      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden)
+      (!el.relatorioOsExportModal || el.relatorioOsExportModal.hidden) &&
+      (!el.cancelOsModal || el.cancelOsModal.hidden)
     ) {
       document.body.classList.remove("modal-open");
     }
@@ -1233,6 +1322,7 @@
     if (!el.relatorioBatchModal) return;
     relatorioBatchSelectedOrderIds.clear();
     copyRelatorioListFiltersToBatch();
+    if (el.relatorioBatchFiltroBaixado) el.relatorioBatchFiltroBaixado.value = "";
     relatorioBatchSelectedFormat = "csv";
     updateRelatorioBatchFormatUI();
     relatorioBatchModalPreviousFocus = document.activeElement;
@@ -1523,9 +1613,13 @@
 
   function formatExecutionStart(iso) {
     if (!iso) return "—";
-    const dt = new Date(iso);
+    const dt = parseApiDateTimeAsUtc(iso);
     if (Number.isNaN(dt.getTime())) return "—";
-    return `Início: ${dt.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`;
+    return `Início: ${dt.toLocaleString("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: DISPLAY_TIMEZONE_BR,
+    })}`;
   }
 
   function formatElapsedSeconds(totalSec) {
@@ -1702,13 +1796,23 @@
     }
   }
 
+  function isCancelOsModalOpen() {
+    return Boolean(el.cancelOsModal && !el.cancelOsModal.hidden);
+  }
+
   /**
    * Simula +1 unidade. Devolve estado para o agendador manter o ciclo de 3 s mesmo após pausar/retomar.
    * @returns {"incremented"|"paused"|"stopped"}
    */
   async function runRemedySimulationTick(robotId, targetUnits) {
+    if (isCancelOsModalOpen()) {
+      return "paused";
+    }
     try {
       await fetchCsrf();
+      if (isCancelOsModalOpen()) {
+        return "paused";
+      }
       const res = await fetch(`${API_BASE}/robots/${robotId}`, FETCH_CRED);
       if (res.status === 401) {
         stopRemedySimulation();
@@ -1720,6 +1824,9 @@
         return "stopped";
       }
       const d = await res.json();
+      if (isCancelOsModalOpen()) {
+        return "paused";
+      }
       if (!d.current_order) {
         stopRemedySimulation(robotId);
         return "stopped";
@@ -1733,6 +1840,9 @@
       }
       const u = d.units_separated ?? 0;
       const total = d.current_order.expected_units ?? targetUnits;
+      if (isCancelOsModalOpen()) {
+        return "paused";
+      }
       if (u >= total) {
         stopRemedySimulation(robotId);
         await loadRobots();
@@ -1740,6 +1850,9 @@
         return "stopped";
       }
       const next = u + 1;
+      if (isCancelOsModalOpen()) {
+        return "paused";
+      }
       const patch = await apiJson(`/robots/${robotId}/units`, {
         method: "PATCH",
         body: JSON.stringify({ units_separated: next }),
@@ -3711,9 +3824,6 @@
     }
   });
   el.relatorioBatchDownload?.addEventListener("click", () => void runRelatorioBatchDownload());
-  el.btnRelatorioBatchIncludeAllFilter?.addEventListener("click", () =>
-    void relatorioBatchIncludeAllOrdersFromCurrentFilter(),
-  );
 
   el.relatorioOsExportModal?.addEventListener("click", (ev) => {
     if (ev.target.closest("[data-relatorio-os-export-dismiss]")) {
@@ -3921,10 +4031,40 @@
 
   el.btnCancelarOs?.addEventListener("click", async () => {
     if (selectedRobotId == null) return;
-    await fetchCsrf();
-    el.btnCancelarOs.disabled = true;
+    await openCancelOsModal();
+  });
+
+  el.cancelOsReason?.addEventListener("change", syncCancelOsDetailVisibility);
+
+  el.cancelOsModal?.querySelectorAll("[data-cancel-os-modal-dismiss]").forEach((node) => {
+    node.addEventListener("click", closeCancelOsModal);
+  });
+
+  el.cancelOsModalConfirm?.addEventListener("click", async () => {
+    if (selectedRobotId == null) return;
+    const reasonCode = el.cancelOsReason?.value?.trim() || "";
+    if (!reasonCode) {
+      toast("Selecione um motivo.", "error");
+      return;
+    }
+    let detail = null;
+    if (reasonCode === CANCEL_OUTROS_CODE) {
+      const t = (el.cancelOsDetail?.value || "").trim();
+      if (!t) {
+        toast("Descreva o motivo ao selecionar «Outros (especificar)».", "error");
+        return;
+      }
+      detail = t;
+    }
+    el.cancelOsModalConfirm.disabled = true;
     try {
-      const res = await apiJson(`/robots/${selectedRobotId}/cancelar-os`, { method: "POST" });
+      await fetchCsrf();
+      const body =
+        detail != null ? { reason_code: reasonCode, detail } : { reason_code: reasonCode };
+      const res = await apiJson(`/robots/${selectedRobotId}/cancelar-os`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
       if (!res.ok) {
         const text = await res.text();
         let msg = `Erro ${res.status}`;
@@ -3937,6 +4077,7 @@
         toast(msg, "error");
         return;
       }
+      closeCancelOsModal();
       stopRemedySimulation(selectedRobotId);
       toast("OS cancelada: separador liberado e ordem voltou para a fila.", "success");
       await loadRobots();
@@ -3944,7 +4085,7 @@
     } catch (e) {
       toast(e instanceof Error ? e.message : "Erro ao cancelar OS.", "error");
     } finally {
-      el.btnCancelarOs.disabled = false;
+      el.cancelOsModalConfirm.disabled = false;
     }
   });
 
@@ -3973,6 +4114,11 @@
     if (el.manualOsModal && !el.manualOsModal.hidden) {
       e.preventDefault();
       closeManualOsModal();
+      return;
+    }
+    if (el.cancelOsModal && !el.cancelOsModal.hidden) {
+      e.preventDefault();
+      closeCancelOsModal();
       return;
     }
     if (el.relatorioBatchModal && !el.relatorioBatchModal.hidden) {

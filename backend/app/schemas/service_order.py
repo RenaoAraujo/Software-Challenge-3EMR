@@ -89,6 +89,10 @@ class OrderReportItem(BaseModel):
         default="",
         description="Duração total atribuição → encerramento, texto tipo «X min Y s».",
     )
+    tempo_liquido_separacao: str = Field(
+        default="",
+        description="Tempo efetivo de execução (total menos pausas), «X min Y s»; vazio se indisponível.",
+    )
 
 
 class OrdersReportResponse(BaseModel):

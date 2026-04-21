@@ -8,7 +8,14 @@ from app.api.dependencies import get_database, limit_sensitive, require_csrf_tok
 from app.schemas.assignment import AssignOrderBody
 from app.schemas.historico import RobotHistoricoStats
 from app.schemas.progress import UnitsProgressBody
-from app.schemas.robot import RobotCreateBody, RobotDetail, RobotSummary, RobotUpdateBody
+from app.schemas.robot import (
+    CancelOrderBody,
+    CancellationReasonOption,
+    RobotCreateBody,
+    RobotDetail,
+    RobotSummary,
+    RobotUpdateBody,
+)
 from app.services.assignment_service import AssignmentError, AssignmentService
 from app.services.historico_service import HistoricoService
 from app.services.robot_service import RobotService
@@ -26,6 +33,13 @@ def list_robots(
     db: Session = Depends(get_database),
 ) -> list[RobotSummary]:
     return RobotService(db).list_robots(name_contains=name)
+
+
+@router.get("/cancellation-reasons", response_model=list[CancellationReasonOption])
+def list_cancellation_reasons() -> list[CancellationReasonOption]:
+    from app.constants.cancellation_reasons import public_reason_list
+
+    return [CancellationReasonOption(**item) for item in public_reason_list()]
 
 
 @router.post("", response_model=RobotDetail, status_code=201)
@@ -100,27 +114,41 @@ def concluir_ordem_atual(
 def cancelar_ordem_atual(
     request: Request,
     robot_id: int,
+    body: CancelOrderBody,
     db: Session = Depends(get_database),
     _: None = Depends(require_csrf_token),
     __: None = Depends(limit_sensitive),
 ) -> RobotDetail:
+    from app.constants.cancellation_reasons import OUTROS_CODE, label_for_cancel_code
+
     svc = RobotService(db)
     before = svc.get_robot(robot_id)
     if before is None:
         raise HTTPException(status_code=404, detail="Separador não encontrado.")
     os_code = before.current_order.os_code if before.current_order else None
+    code = body.reason_code.strip()
     try:
-        detail = svc.cancel_current_order(robot_id)
+        detail = svc.cancel_current_order(
+            robot_id,
+            reason_code=body.reason_code,
+            detail=body.detail,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     if detail is None:
         raise HTTPException(status_code=404, detail="Separador não encontrado.")
     if os_code:
+        if code == OUTROS_CODE:
+            motivo_txt = (body.detail or "").strip() or "Outros"
+            audit_desc = f"Separador {before.name} — OS {os_code} cancelada. Motivo: Outros — {motivo_txt}."
+        else:
+            motivo_txt = label_for_cancel_code(code) or code
+            audit_desc = f"Separador {before.name} — OS {os_code} cancelada. Motivo: {motivo_txt}."
         audit_session_action(
             request,
             db,
             action="os_cancelled",
-            description=f"Separador {before.name} — OS {os_code} cancelada.",
+            description=audit_desc,
         )
     return detail
 

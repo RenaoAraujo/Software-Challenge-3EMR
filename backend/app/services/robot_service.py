@@ -19,6 +19,20 @@ class RobotService:
         self._db = db
         self._repo = RobotRepository(db)
 
+    @staticmethod
+    def _accumulated_pause_seconds_for_order(robot: Robot, now: datetime) -> int:
+        """Segundos em pausa acumulados no robô, incluindo o segmento atual se estiver pausado."""
+        ep = max(0, int(robot.elapsed_pause_seconds or 0))
+        if robot.paused_at is not None:
+            p = robot.paused_at
+            if p.tzinfo is None:
+                p = p.replace(tzinfo=UTC)
+            n = now if now.tzinfo else now.replace(tzinfo=UTC)
+            seg = (n - p).total_seconds()
+            if seg > 0:
+                ep += int(seg)
+        return ep
+
     def list_robots(self, name_contains: str | None = None) -> list[RobotSummary]:
         robots = self._repo.list_all(name_contains=name_contains)
         return [self._to_summary(r) for r in robots]
@@ -99,6 +113,7 @@ class RobotService:
         if order is None:
             raise ValueError("Ordem vinculada não encontrada.")
         now = datetime.now(UTC)
+        order.total_pause_seconds = RobotService._accumulated_pause_seconds_for_order(robot, now)
         order.status = ServiceOrderStatus.COMPLETED.value
         order.completed_at = now
         order.completed_by_robot_id = robot.id
@@ -159,8 +174,21 @@ class RobotService:
         assert full is not None
         return self._to_detail(full)
 
-    def cancel_current_order(self, robot_id: int) -> RobotDetail | None:
+    def cancel_current_order(
+        self,
+        robot_id: int,
+        *,
+        reason_code: str,
+        detail: str | None = None,
+    ) -> RobotDetail | None:
         """Interrompe a OS no separador: libera o robô e marca a OS como cancelada (histórico)."""
+        from app.constants.cancellation_reasons import OUTROS_CODE, allowed_cancel_codes, label_for_cancel_code
+
+        code = (reason_code or "").strip()
+        if not code:
+            raise ValueError("Motivo de cancelamento é obrigatório.")
+        if code not in allowed_cancel_codes():
+            raise ValueError("Motivo de cancelamento inválido.")
         robot = self._repo.get_by_id(robot_id)
         if robot is None:
             return None
@@ -173,26 +201,29 @@ class RobotService:
         if order is not None:
             u_sep = max(0, int(robot.units_separated or 0))
             order.cancelled_separated_units = u_sep
+            pause_s = RobotService._accumulated_pause_seconds_for_order(robot, now)
+            order.total_pause_seconds = pause_s
             order.cancelled_avg_seconds_per_unit = None
-            if order.assigned_at is not None and u_sep > 0:
-                a = order.assigned_at
-                if a.tzinfo is None:
-                    a = a.replace(tzinfo=UTC)
-                delta = (now - a).total_seconds()
-                if delta >= 0:
-                    order.cancelled_avg_seconds_per_unit = round(delta / u_sep, 1)
-            order.status = ServiceOrderStatus.CANCELLED.value
-            order.cancelled_at = now
-            order.cancelled_by_robot_id = robot_id
-            order.cancelled_by_robot_name = (robot.name or "").strip() or None
+            order.cancelled_wall_seconds = None
             if order.assigned_at is not None:
                 a = order.assigned_at
                 if a.tzinfo is None:
                     a = a.replace(tzinfo=UTC)
                 wall = (now - a).total_seconds()
-                order.cancelled_wall_seconds = max(0, int(wall)) if wall >= 0 else None
+                if wall >= 0:
+                    order.cancelled_wall_seconds = max(0, int(wall))
+                    if u_sep > 0:
+                        liquid = max(0.0, float(wall) - float(pause_s))
+                        order.cancelled_avg_seconds_per_unit = round(liquid / u_sep, 1)
+            order.status = ServiceOrderStatus.CANCELLED.value
+            order.cancelled_at = now
+            order.cancelled_by_robot_id = robot_id
+            order.cancelled_by_robot_name = (robot.name or "").strip() or None
+            order.cancel_error_code = code[:64]
+            if code == OUTROS_CODE:
+                order.cancel_error_description = (detail or "").strip() or None
             else:
-                order.cancelled_wall_seconds = None
+                order.cancel_error_description = label_for_cancel_code(code) or code
             order.assigned_at = None
             order.completed_at = None
             order.completed_by_robot_id = None

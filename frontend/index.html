@@ -225,9 +225,6 @@
         <section class="operacao-coletiva panel" aria-labelledby="operacao-coletiva-heading">
           <div class="operacao-coletiva__head">
             <h2 id="operacao-coletiva-heading" class="operacao-coletiva__title">Atividade dos separadores</h2>
-            <p class="operacao-coletiva__lede">
-              Visão compartilhada para todos os usuários: o que cada separador está executando agora. Atualiza
-              automaticamente a cada poucos segundos.
             </p>
           </div>
           <div
@@ -570,6 +567,46 @@
 
     <div
       class="modal"
+      id="cancel-os-modal"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cancel-os-modal-title"
+    >
+      <button
+        type="button"
+        class="modal__backdrop"
+        data-cancel-os-modal-dismiss
+        aria-label="Fechar"
+      ></button>
+      <div class="modal__panel modal__panel--cancel-os">
+        <h2 id="cancel-os-modal-title" class="modal__title">Motivo do cancelamento</h2>
+        <label class="field">
+          <span class="field__label">Motivo</span>
+          <select id="cancel-os-reason" name="reason_code" required></select>
+        </label>
+        <label class="field cancel-os-detail--hidden" id="cancel-os-detail-wrap">
+          <span class="field__label">Descreva o motivo</span>
+          <textarea
+            id="cancel-os-detail"
+            name="detail"
+            rows="3"
+            maxlength="4000"
+            placeholder="Descreva o que ocorreu…"
+            disabled
+          ></textarea>
+        </label>
+        <div class="modal__actions">
+          <button type="button" class="btn btn--ghost" id="cancel-os-modal-cancel" data-cancel-os-modal-dismiss>
+            Voltar
+          </button>
+          <button type="button" class="btn btn--danger" id="cancel-os-modal-confirm">Confirmar cancelamento</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal"
       id="clear-logs-modal"
       hidden
       role="dialog"
@@ -706,12 +743,15 @@
               <span class="field__label">Separador (código)</span>
               <input type="search" id="relatorio-batch-codigo-separador" maxlength="32" autocomplete="off" placeholder="Código do robô" />
             </label>
+            <label class="field">
+              <span class="field__label">Relatório baixado</span>
+              <select id="relatorio-batch-filtro-baixado" aria-label="Filtrar por estado de download neste navegador">
+                <option value="">Todos</option>
+                <option value="baixado">Já baixado</option>
+                <option value="nao_baixado">Não baixado</option>
+              </select>
+            </label>
           </div>
-        </div>
-        <div class="relatorio-batch-bulk-actions">
-          <button type="button" class="btn btn--ghost btn--small" id="btn-relatorio-batch-include-all-filter">
-            Incluir todas as ordens do filtro atual
-          </button>
         </div>
         <div id="relatorio-batch-preview" class="relatorio-batch-preview" aria-live="polite"></div>
         <div

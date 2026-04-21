@@ -57,6 +57,8 @@ def apply_sqlite_migrations(conn: Connection) -> None:
         conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancel_error_code VARCHAR(64)"))
     if "cancelled_wall_seconds" not in so_cols:
         conn.execute(text("ALTER TABLE service_orders ADD COLUMN cancelled_wall_seconds INTEGER"))
+    if "total_pause_seconds" not in so_cols:
+        conn.execute(text("ALTER TABLE service_orders ADD COLUMN total_pause_seconds INTEGER"))
 
     user_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(users)")).fetchall()}
     if "is_admin" not in user_cols:

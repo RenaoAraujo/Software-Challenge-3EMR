@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ManualRobotStatus = Literal["offline", "idle", "maintenance", "error"]
 
@@ -79,3 +79,30 @@ class RobotUpdateBody(BaseModel):
         None,
         description="Somente ajuste manual: offline, idle, maintenance, error. 'running' é definido pela OS.",
     )
+
+
+class CancellationReasonOption(BaseModel):
+    """Item da lista de motivos de cancelamento (código + rótulo)."""
+
+    code: str
+    label: str
+
+
+class CancelOrderBody(BaseModel):
+    """Motivo do cancelamento da OS em execução no separador."""
+
+    reason_code: str = Field(..., min_length=1, max_length=64, description="Código do motivo (preset ou OUTROS).")
+    detail: str | None = Field(
+        default=None,
+        max_length=4000,
+        description="Obrigatório quando reason_code é OUTROS: texto livre.",
+    )
+
+    @model_validator(mode="after")
+    def require_detail_for_outros(self) -> "CancelOrderBody":
+        from app.constants.cancellation_reasons import OUTROS_CODE
+
+        if self.reason_code.strip() == OUTROS_CODE:
+            if not (self.detail and self.detail.strip()):
+                raise ValueError("Informe o motivo ao selecionar «Outros».")
+        return self
