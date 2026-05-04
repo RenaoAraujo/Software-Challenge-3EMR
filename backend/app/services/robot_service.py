@@ -4,7 +4,15 @@ from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.entities import Robot, RobotStatus, ServiceOrder, ServiceOrderStatus, is_robot_online
+from app.models.entities import (
+    OrderEventType,
+    Robot,
+    RobotStatus,
+    ServiceOrder,
+    ServiceOrderStatus,
+    is_robot_online,
+)
+from app.repositories.order_event_repository import OrderEventRepository
 from app.repositories.robot_repository import RobotRepository
 from app.schemas.robot import (
     RobotCreateBody,
@@ -108,7 +116,7 @@ class RobotService:
         assert full is not None
         return self._to_detail(full)
 
-    def _apply_order_completion(self, robot: Robot) -> None:
+    def _apply_order_completion(self, robot: Robot, *, auto: bool = False) -> None:
         """Persiste conclusão da OS atual usando units_separated já definido no robô."""
         order = robot.current_order
         if order is None:
@@ -128,6 +136,17 @@ class RobotService:
         robot.status = RobotStatus.IDLE.value
         self._db.add(robot)
         self._db.add(order)
+        # Evento permanente — preservado mesmo se a OS for depois reaberta/refeita.
+        OrderEventRepository(self._db).record(
+            order_id=order.id,
+            order_code=order.os_code,
+            event_type=OrderEventType.COMPLETED_AUTO if auto else OrderEventType.COMPLETED,
+            occurred_at=now,
+            robot_id=robot.id,
+            robot_name=(robot.name or "").strip() or None,
+            pause_count=int(order.pause_count or 0),
+            meta={"completed_units": int(order.completed_units or 0)},
+        )
 
     def update_units_separated(
         self, robot_id: int, units: int
@@ -148,7 +167,7 @@ class RobotService:
         completed_os_code: str | None = None
         if order is not None and expected > 0 and units >= expected:
             completed_os_code = order.os_code
-            self._apply_order_completion(robot)
+            self._apply_order_completion(robot, auto=True)
         else:
             self._db.add(robot)
         self._db.commit()
@@ -231,6 +250,21 @@ class RobotService:
             order.completed_by_robot_name = None
             order.completed_units = None
             self._db.add(order)
+            # Evento permanente de cancelamento — preservado mesmo se a OS for depois reaberta/concluída.
+            OrderEventRepository(self._db).record(
+                order_id=order.id,
+                order_code=order.os_code,
+                event_type=OrderEventType.CANCELLED,
+                occurred_at=now,
+                robot_id=robot_id,
+                robot_name=(robot.name or "").strip() or None,
+                pause_count=int(order.pause_count or 0),
+                meta={
+                    "reason_code": code,
+                    "reason_description": order.cancel_error_description,
+                    "separated_units": int(order.cancelled_separated_units or 0),
+                },
+            )
         robot.current_order_id = None
         robot.job_started_at = None
         robot.paused_at = None
@@ -258,6 +292,15 @@ class RobotService:
         if ord_ is not None:
             ord_.pause_count = int(ord_.pause_count or 0) + 1
             self._db.add(ord_)
+            # Evento permanente de pausa — preservado mesmo se a OS for reaberta.
+            OrderEventRepository(self._db).record(
+                order_id=ord_.id,
+                order_code=ord_.os_code,
+                event_type=OrderEventType.PAUSED,
+                occurred_at=now,
+                robot_id=robot.id,
+                robot_name=(robot.name or "").strip() or None,
+            )
         self._db.add(robot)
         self._db.commit()
         self._db.refresh(robot)

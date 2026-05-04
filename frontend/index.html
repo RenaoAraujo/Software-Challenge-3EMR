@@ -481,6 +481,32 @@
               </button>
             </div>
           </div>
+          <div class="logs-subnav" role="tablist" aria-label="Tipo de registro">
+            <button
+              type="button"
+              class="logs-subnav__tab logs-subnav__tab--active"
+              id="tab-logs-usuario"
+              role="tab"
+              aria-selected="true"
+              data-logs-category="usuario"
+            >
+              Usuário
+            </button>
+            <button
+              type="button"
+              class="logs-subnav__tab"
+              id="tab-logs-separador"
+              role="tab"
+              aria-selected="false"
+              data-logs-category="separador"
+            >
+              Separador
+            </button>
+          </div>
+          <p class="logs-subnav__hint" id="logs-subnav-hint">
+            <span data-logs-hint-for="usuario">Registros de login, logout, exportação e visualização de relatórios e alterações de conta.</span>
+            <span data-logs-hint-for="separador" hidden>Registros de início, término, pausa, retomada e cancelamento de OS.</span>
+          </p>
           <form id="form-logs-filter" class="logs-filter" aria-label="Filtros dos logs de auditoria">
             <label class="field logs-filter__field">
               <span class="field__label">Usuário</span>
@@ -493,19 +519,10 @@
                 autocomplete="off"
               />
             </label>
-            <label class="field logs-filter__field">
-              <span class="field__label">Categoria</span>
-              <select id="logs-filter-category" name="category">
-                <option value="">Todas</option>
-                <option value="historico">Histórico (consulta por separador)</option>
-                <option value="cancelamento">Cancelamento de OS</option>
-                <option value="pausa">Pausa</option>
-                <option value="retomada">Retomada</option>
-                <option value="conclusao">Conclusão de OS (manual ou automática)</option>
-                <option value="inicio_os">Início de OS</option>
-                <option value="os_todas">Todas as ações de OS</option>
-                <option value="sessao">Login / logout</option>
-                <option value="contas">Contas (senha, cadastro, promover admin)</option>
+            <label class="field logs-filter__field" id="logs-filter-robot-wrap" hidden>
+              <span class="field__label">Separador</span>
+              <select id="logs-filter-robot" name="robot">
+                <option value="">Todos</option>
               </select>
             </label>
             <label class="field logs-filter__field">
@@ -945,7 +962,7 @@
         <p id="manual-os-modal-desc" class="modal__text modal__text--lede">
           Crie uma ordem com número, cliente e quantidade de remédios; escolha o separador
           <strong>ocioso (idle)</strong>. Se o número for de uma OS já <strong>cancelada</strong>, o sistema
-          pergunta se o separador continua de onde parou ou refaz o pedido. Opcional: simular 1 unidade a cada 3 s.
+          pergunta se o separador continua de onde parou ou refaz o pedido. Opcional: simular 1 unidade a cada 3–10 s (aleatório).
         </p>
         <form id="form-manual-os" class="form-stack modal__form">
           <label class="field">
@@ -971,7 +988,7 @@
           </label>
           <label class="field field--checkbox">
             <input type="checkbox" id="manual-os-simulate" name="simular" checked />
-            <span class="field__label field__label--inline">Simular separação (1 unidade a cada 3 s)</span>
+            <span class="field__label field__label--inline">Simular separação (1 unidade a cada 3–10 s, aleatório)</span>
           </label>
           <div class="modal__actions modal__actions--form">
             <button type="button" class="btn btn--ghost" id="manual-os-modal-cancel">Cancelar</button>

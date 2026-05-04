@@ -35,8 +35,20 @@ def list_audit_logs(
         None,
         max_length=32,
         description=(
-            "Grupo: historico, cancelamento, pausa, retomada, conclusao, inicio_os, "
+            "Grupo principal: 'usuario' (login/logout, exportar/visualizar "
+            "relatório, contas) ou 'separador' (início, término, pausa, "
+            "retomada e cancelamento de OS). Grupos legados também aceitos: "
+            "historico, cancelamento, pausa, retomada, conclusao, inicio_os, "
             "sessao, contas, os_todas."
+        ),
+    ),
+    robot: str | None = Query(
+        None,
+        max_length=128,
+        description=(
+            "Filtra por nome do separador envolvido na ação "
+            "(casa com o prefixo padronizado 'Separador {nome}' da descrição). "
+            "Útil apenas para a categoria 'separador'."
         ),
     ),
     db: Session = Depends(get_database),
@@ -50,6 +62,7 @@ def list_audit_logs(
             category=category,
             de=de,
             ate=ate,
+            robot_name_contains=robot,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

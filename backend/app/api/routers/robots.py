@@ -55,6 +55,30 @@ def create_robot(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+@router.get("/historico-todos", response_model=RobotHistoricoStats)
+def get_historico_todos_separadores(
+    request: Request,
+    de: date = Query(..., description="Início do período (AAAA-MM-DD)."),
+    ate: date = Query(..., description="Fim do período (AAAA-MM-DD)."),
+    db: Session = Depends(get_database),
+) -> RobotHistoricoStats:
+    """Estatísticas agregadas de todos os separadores no período."""
+    try:
+        stats = HistoricoService(db).stats_all_robots_period(de, ate)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    audit_session_action(
+        request,
+        db,
+        action="view_historico",
+        description=(
+            "Consultou histórico agregado de todos os separadores "
+            f"no período de {de.isoformat()} a {ate.isoformat()}."
+        ),
+    )
+    return stats
+
+
 @router.get("/{robot_id}/historico", response_model=RobotHistoricoStats)
 def get_robot_historico(
     request: Request,

@@ -9,8 +9,36 @@ from sqlalchemy.orm import Session
 
 from app.models.entities import AuditLog
 
-# Grupos de `action` para filtro por “área” (histórico, cancelamento, pausa, etc.)
+# Grupos de `action` para filtro por “área”.
+# A UI hoje usa apenas duas grandes categorias ("usuario" e "separador"),
+# mas mantemos os grupos detalhados para compatibilidade com chamadas antigas.
 AUDIT_CATEGORY_ACTIONS: dict[str, tuple[str, ...]] = {
+    # Ações de usuário: autenticação, visualização e exportação de relatórios,
+    # e tudo relacionado à gestão de contas (senha, cadastro, admin).
+    "usuario": (
+        "login",
+        "logout",
+        "export_relatorio_os",
+        "view_historico",
+        "view_relatorio_os",
+        "password_changed_self",
+        "password_changed_by_admin",
+        "user_created",
+        "user_promoted_admin",
+        "user_demoted_admin",
+        "user_updated_by_admin",
+    ),
+    # Ações de separador: ciclo de vida de OS (início, término, pausa,
+    # retomada e cancelamento).
+    "separador": (
+        "os_started",
+        "os_completed",
+        "os_completed_auto",
+        "os_paused",
+        "os_resumed",
+        "os_cancelled",
+    ),
+    # Grupos legados (mantidos para compatibilidade com integrações/chamadas antigas).
     "historico": ("view_historico", "view_relatorio_os", "export_relatorio_os"),
     "cancelamento": ("os_cancelled",),
     "pausa": ("os_paused",),
@@ -85,6 +113,7 @@ class AuditService:
         category: str | None = None,
         de: date | None = None,
         ate: date | None = None,
+        robot_name_contains: str | None = None,
     ) -> tuple[list[AuditLog], int]:
         limit = max(1, min(limit, 500))
         offset = max(0, offset)
@@ -93,6 +122,15 @@ class AuditService:
         u = (username_contains or "").strip()
         if u:
             conditions.append(func.instr(func.lower(AuditLog.username), func.lower(u)) > 0)
+
+        # Filtro por separador: casa com o prefixo padronizado "Separador {nome} —"
+        # usado nas descrições das ações de OS.
+        r = (robot_name_contains or "").strip()
+        if r:
+            needle = f"Separador {r}"
+            conditions.append(
+                func.instr(func.lower(AuditLog.description), func.lower(needle)) > 0
+            )
 
         if de is not None and ate is not None:
             if de > ate:

@@ -33,9 +33,26 @@ class HistoricoDiaRemedios(BaseModel):
     )
 
 
+class HistoricoClasseMedicamento(BaseModel):
+    """Distribuição por classe terapêutica dos medicamentos nas OS concluídas no período."""
+
+    classe: str = Field(description="Nome da classe terapêutica (ex.: Cardiológica, Urológica).")
+    quantidade: int = Field(ge=0, description="Número de linhas de medicamento classificadas nessa classe.")
+    percentual: float = Field(
+        ge=0.0,
+        le=100.0,
+        description="Percentual desta classe no total do período (0–100, 1 casa decimal).",
+    )
+
+
 class RobotHistoricoStats(BaseModel):
-    robot_id: int
-    robot_nome: str
+    robot_id: int | None = Field(
+        default=None,
+        description="ID do separador; null quando o resultado é agregado de todos.",
+    )
+    robot_nome: str = Field(
+        description="Nome do separador ou rótulo agregado (ex.: 'Todos os separadores').",
+    )
     de: date = Field(description="Início do período (inclusivo).")
     ate: date = Field(description="Fim do período (inclusivo).")
     ordens_concluidas: int = Field(description="Quantidade de OS concluídas no período.")
@@ -61,12 +78,31 @@ class RobotHistoricoStats(BaseModel):
     )
     ordens_canceladas: int = Field(
         default=0,
-        description="OS canceladas neste separador no período (data de cancelamento).",
+        description=(
+            "Total de eventos de cancelamento no período (um por vez que a OS foi cancelada). "
+            "Preserva histórico: se a OS foi cancelada e depois reaberta/refeita, continua "
+            "contando o cancelamento original."
+        ),
     )
     ordens_com_pausa: int = Field(
         default=0,
         description=(
             "OS concluídas ou canceladas no período que tiveram ao menos uma pausa registrada nesta execução."
+        ),
+    )
+    pausas_concluidas: int = Field(
+        default=0,
+        description=(
+            "Soma das pausas das execuções que terminaram em CONCLUSÃO dentro do período. "
+            "Derivado do pause_count registrado em cada evento de conclusão (imutável)."
+        ),
+    )
+    pausas_canceladas: int = Field(
+        default=0,
+        description=(
+            "Soma das pausas das execuções que terminaram em CANCELAMENTO dentro do período. "
+            "Preserva histórico: se a OS foi reaberta/refeita depois, as pausas daquela execução "
+            "cancelada continuam contando aqui."
         ),
     )
     remedios_por_dia: list[HistoricoDiaRemedios] = Field(
@@ -88,5 +124,13 @@ class RobotHistoricoStats(BaseModel):
         description=(
             "Para cada dia entre de e ate (inclusivo), tempo médio (minutos) envio→conclusão das OS "
             "concluídas naquele dia civil (America/Sao_Paulo); null nos dias sem OS com duração válida."
+        ),
+    )
+    medicamentos_por_classe: list[HistoricoClasseMedicamento] = Field(
+        default_factory=list,
+        description=(
+            "Distribuição por classe terapêutica de todas as linhas de medicamento nas OS "
+            "concluídas no período. Ordenado do maior para o menor. A classe 'Outros' agrega "
+            "os itens que não casaram com nenhuma regra."
         ),
     )

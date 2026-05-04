@@ -64,6 +64,63 @@ def apply_sqlite_migrations(conn: Connection) -> None:
     if "is_admin" not in user_cols:
         conn.execute(text("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0"))
 
+    # order_events: campo opcional que guarda o pause_count da execução no momento do término
+    # (só existe em bancos que já viram uma versão anterior do OrderEvent sem essa coluna).
+    oe_rows = conn.execute(text("PRAGMA table_info(order_events)")).fetchall()
+    if oe_rows:
+        oe_cols = {row[1] for row in oe_rows}
+        if "pause_count" not in oe_cols:
+            conn.execute(text("ALTER TABLE order_events ADD COLUMN pause_count INTEGER"))
+        # Preenche retroativamente pause_count para eventos antigos criados antes da coluna existir.
+        # Só atualiza quando o status atual da OS coincide com o tipo do evento — caso contrário
+        # o order.pause_count já foi zerado por uma reabertura e não reflete o run histórico.
+        conn.execute(
+            text(
+                """
+                UPDATE order_events
+                   SET pause_count = (
+                       SELECT so.pause_count FROM service_orders so WHERE so.id = order_events.order_id
+                   )
+                 WHERE pause_count IS NULL
+                   AND order_id IS NOT NULL
+                   AND event_type IN ('completed', 'completed_auto')
+                   AND EXISTS (
+                       SELECT 1 FROM service_orders so
+                        WHERE so.id = order_events.order_id AND so.status = 'completed'
+                   )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE order_events
+                   SET pause_count = (
+                       SELECT so.pause_count FROM service_orders so WHERE so.id = order_events.order_id
+                   )
+                 WHERE pause_count IS NULL
+                   AND order_id IS NOT NULL
+                   AND event_type = 'cancelled'
+                   AND EXISTS (
+                       SELECT 1 FROM service_orders so
+                        WHERE so.id = order_events.order_id AND so.status = 'cancelled'
+                   )
+                """
+            )
+        )
+        # Remaining NULLs: run histórico que foi perdido (OS cancelada depois reaberta, por ex.).
+        # Nesses casos adotamos 0 para não distorcer as somas no gráfico.
+        conn.execute(
+            text(
+                """
+                UPDATE order_events
+                   SET pause_count = 0
+                 WHERE pause_count IS NULL
+                   AND event_type IN ('cancelled', 'completed', 'completed_auto')
+                """
+            )
+        )
+
     _cleanup_orphan_robot_refs(conn)
     _ensure_robots_autoincrement(conn)
 

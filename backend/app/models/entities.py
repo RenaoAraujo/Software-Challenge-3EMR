@@ -33,6 +33,21 @@ class ServiceOrderStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class OrderEventType(str, enum.Enum):
+    """Tipos de evento permanentes do ciclo de vida de uma OS.
+
+    Diferente dos campos agregados em ServiceOrder (cancelled_at, completed_at, pause_count)
+    que podem ser sobrescritos/zerados ao reabrir uma OS, os OrderEvent são imutáveis:
+    uma OS cancelada e depois reaberta/concluída mantém o evento de cancelamento e ganha
+    um novo evento de conclusão.
+    """
+
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+    COMPLETED_AUTO = "completed_auto"
+    PAUSED = "paused"
+
+
 class Robot(Base):
     __tablename__ = "robots"
 
@@ -131,6 +146,41 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class OrderEvent(Base):
+    """Registro imutável de um evento de ciclo de vida de OS.
+
+    Nunca é apagado ao reabrir/refazer a OS — garante que contagens históricas
+    (canceladas, concluídas, pausas) reflitam tudo o que aconteceu na vida da OS.
+    """
+
+    __tablename__ = "order_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("service_orders.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Mantemos o código da OS mesmo se a OS for futuramente deletada.
+    order_code: Mapped[str] = mapped_column(String(64), index=True)
+    event_type: Mapped[str] = mapped_column(String(32), index=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    robot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("robots.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Nome do separador no momento do evento (persiste mesmo se o robô for excluído).
+    robot_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Número de pausas dessa execução (preenchido em eventos CANCELLED/COMPLETED/COMPLETED_AUTO).
+    # Permite somar pausas por categoria de término sem depender do order.pause_count (que é
+    # zerado quando a OS é reaberta).
+    pause_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class AuditLog(Base):

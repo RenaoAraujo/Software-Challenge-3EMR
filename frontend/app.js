@@ -130,10 +130,14 @@
     btnLogsClear: document.getElementById("btn-logs-clear"),
     formLogsFilter: document.getElementById("form-logs-filter"),
     logsFilterUsername: document.getElementById("logs-filter-username"),
-    logsFilterCategory: document.getElementById("logs-filter-category"),
     logsFilterDe: document.getElementById("logs-filter-de"),
     logsFilterAte: document.getElementById("logs-filter-ate"),
+    logsFilterRobot: document.getElementById("logs-filter-robot"),
+    logsFilterRobotWrap: document.getElementById("logs-filter-robot-wrap"),
     btnLogsFilterClear: document.getElementById("btn-logs-filter-clear"),
+    tabLogsUsuario: document.getElementById("tab-logs-usuario"),
+    tabLogsSeparador: document.getElementById("tab-logs-separador"),
+    logsSubnavHint: document.getElementById("logs-subnav-hint"),
     formHistorico: document.getElementById("form-historico"),
     historicoRobot: document.getElementById("historico-robot"),
     historicoDe: document.getElementById("historico-de"),
@@ -195,8 +199,12 @@
   let historicoRemediosChart = null;
   let historicoOsChart = null;
   let historicoTempoOsChart = null;
+  let historicoClassesChart = null;
+  let historicoResumoBarChart = null;
   let relatorioOsPageOffset = 0;
   const AUDIT_LOGS_LIMIT_KEY = "emr-audit-logs-limit";
+  /** Valor sentinela do select do histórico para "todos os separadores". */
+  const HISTORICO_ALL_SEPARADORES = "__all__";
   let auditLogsPerPageCached = 50;
   let auditLogsOffset = 0;
   let lastAuditLogsTotal = 0;
@@ -348,13 +356,21 @@
     remedyNextDue.clear();
   }
 
+  /** Tempo aleatório (ms) entre 3 s e 10 s para simular variação realista por remédio. */
+  const REMEDY_SIM_MIN_MS = 3000;
+  const REMEDY_SIM_MAX_MS = 10000;
+  function nextRemedySimDelayMs() {
+    const span = REMEDY_SIM_MAX_MS - REMEDY_SIM_MIN_MS;
+    return REMEDY_SIM_MIN_MS + Math.floor(Math.random() * (span + 1));
+  }
+
   function scheduleRemedySimulationStep(robotId, targetUnits) {
     const rid = Number(robotId);
     const tgt = Math.max(1, Number(targetUnits) || 1);
     clearRemedySimulationTimerFor(rid);
     let nd = remedyNextDue.get(rid);
     if (nd == null) {
-      nd = Date.now() + 3000;
+      nd = Date.now() + nextRemedySimDelayMs();
       remedyNextDue.set(rid, nd);
     }
     const delay = Math.max(0, nd - Date.now());
@@ -386,7 +402,7 @@
       return;
     }
     if (outcome === "incremented") {
-      remedyNextDue.set(rid, Date.now() + 3000);
+      remedyNextDue.set(rid, Date.now() + nextRemedySimDelayMs());
     }
     scheduleRemedySimulationStep(rid, tgt);
   }
@@ -400,7 +416,7 @@
       if (remedySimTimers.has(robotId)) continue;
       const tgt = Math.max(1, Number(jobs[sid]?.target) || 1);
       if (!remedyNextDue.has(robotId)) {
-        remedyNextDue.set(robotId, Date.now() + 3000);
+        remedyNextDue.set(robotId, Date.now() + nextRemedySimDelayMs());
       }
       scheduleRemedySimulationStep(robotId, tgt);
     }
@@ -1764,6 +1780,11 @@
     opt0.value = "";
     opt0.textContent = "Selecione…";
     el.historicoRobot.appendChild(opt0);
+    // Opção agregada: soma de todos os separadores.
+    const optAll = document.createElement("option");
+    optAll.value = HISTORICO_ALL_SEPARADORES;
+    optAll.textContent = "Todos os separadores (agregado)";
+    el.historicoRobot.appendChild(optAll);
     robotsCache.forEach((r) => {
       const opt = document.createElement("option");
       opt.value = String(r.id);
@@ -1772,7 +1793,9 @@
     });
     // A escolha manual no dropdown do histórico deve ter prioridade sobre o separador
     // selecionado no sidebar — senão o polling de robots sobrescreve a seleção do usuário.
-    if (prev && robotsCache.some((x) => String(x.id) === prev)) {
+    if (prev === HISTORICO_ALL_SEPARADORES) {
+      el.historicoRobot.value = HISTORICO_ALL_SEPARADORES;
+    } else if (prev && robotsCache.some((x) => String(x.id) === prev)) {
       el.historicoRobot.value = prev;
     } else if (selectedRobotId != null && robotsCache.some((x) => x.id === selectedRobotId)) {
       el.historicoRobot.value = String(selectedRobotId);
@@ -1804,7 +1827,7 @@
   }
 
   /**
-   * Simula +1 unidade. Devolve estado para o agendador manter o ciclo de 3 s mesmo após pausar/retomar.
+   * Simula +1 unidade. Devolve estado para o agendador manter o ciclo (3–10 s aleatório por remédio) mesmo após pausar/retomar.
    * @returns {"incremented"|"paused"|"stopped"}
    */
   async function runRemedySimulationTick(robotId, targetUnits) {
@@ -1895,8 +1918,8 @@
     const tgt = Math.max(1, Number(targetUnits) || 1);
     clearRemedySimulationTimerFor(rid);
     persistRemedySim(rid, tgt);
-    /* Primeiro incremento após 3 s — mesmo critério de antes. */
-    remedyNextDue.set(rid, Date.now() + 3000);
+    /* Primeiro incremento após um intervalo aleatório de 3–10 s (varia por remédio). */
+    remedyNextDue.set(rid, Date.now() + nextRemedySimDelayMs());
     scheduleRemedySimulationStep(rid, tgt);
   }
 
@@ -2136,7 +2159,10 @@
       void loadRobots({ silent: true });
     }
     if (isHist) populateHistoricoRobotSelect();
-    if (isLogs) void loadAuditLogs();
+    if (isLogs) {
+      updateLogsRobotFilterVisibility();
+      void loadAuditLogs();
+    }
     if (isRel) {
       void loadRelatorioOsList(true);
     }
@@ -2507,6 +2533,7 @@
       login: "Login",
       logout: "Logout",
       view_historico: "Histórico (separador)",
+      view_relatorio_os: "Consultou relatório de OS",
       view_logs: "Logs de auditoria",
       export_relatorio_os: "Exportou relatório da OS (arquivo)",
       os_started: "OS iniciada",
@@ -2530,14 +2557,81 @@
     params.set("limit", String(getAuditLogsLimit()));
     params.set("offset", String(auditLogsOffset));
     const u = el.logsFilterUsername?.value?.trim();
-    const cat = el.logsFilterCategory?.value?.trim();
+    const cat = getLogsTabCategory();
     const de = el.logsFilterDe?.value?.trim();
     const ate = el.logsFilterAte?.value?.trim();
     if (u) params.set("username", u);
     if (cat) params.set("category", cat);
     if (de) params.set("de", de);
     if (ate) params.set("ate", ate);
+    // Só faz sentido filtrar por separador na categoria "separador".
+    if (cat === "separador") {
+      const robot = el.logsFilterRobot?.value?.trim();
+      if (robot) params.set("robot", robot);
+    }
     return params.toString();
+  }
+
+  /** Retorna a aba ativa ('usuario' ou 'separador'); padrão: 'usuario'. */
+  function getLogsTabCategory() {
+    if (el.tabLogsSeparador?.classList.contains("logs-subnav__tab--active")) {
+      return "separador";
+    }
+    return "usuario";
+  }
+
+  /** Popula o select do filtro por separador a partir do robotsCache. */
+  function populateLogsRobotFilterSelect() {
+    if (!el.logsFilterRobot) return;
+    const prev = el.logsFilterRobot.value;
+    el.logsFilterRobot.innerHTML = "";
+    const opt0 = document.createElement("option");
+    opt0.value = "";
+    opt0.textContent = "Todos";
+    el.logsFilterRobot.appendChild(opt0);
+    robotsCache.forEach((r) => {
+      const opt = document.createElement("option");
+      // O backend casa por substring no prefixo "Separador {nome}", então
+      // enviamos o nome do separador.
+      opt.value = r.name;
+      opt.textContent = `${r.name} (${r.code})`;
+      el.logsFilterRobot.appendChild(opt);
+    });
+    if (prev && robotsCache.some((x) => x.name === prev)) {
+      el.logsFilterRobot.value = prev;
+    }
+  }
+
+  /** Ajusta visibilidade do filtro por separador de acordo com a aba. */
+  function updateLogsRobotFilterVisibility() {
+    if (!el.logsFilterRobotWrap) return;
+    const show = getLogsTabCategory() === "separador";
+    el.logsFilterRobotWrap.hidden = !show;
+    if (show) populateLogsRobotFilterSelect();
+  }
+
+  /** Troca a aba ativa e recarrega os logs. */
+  function setLogsTabCategory(category) {
+    const next = category === "separador" ? "separador" : "usuario";
+    const tabs = [el.tabLogsUsuario, el.tabLogsSeparador];
+    tabs.forEach((btn) => {
+      if (!btn) return;
+      const isActive = btn.dataset.logsCategory === next;
+      btn.classList.toggle("logs-subnav__tab--active", isActive);
+      btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    if (el.logsSubnavHint) {
+      el.logsSubnavHint.querySelectorAll("[data-logs-hint-for]").forEach((node) => {
+        const match = node.getAttribute("data-logs-hint-for") === next;
+        node.hidden = !match;
+      });
+    }
+    if (next !== "separador" && el.logsFilterRobot) {
+      el.logsFilterRobot.value = "";
+    }
+    updateLogsRobotFilterVisibility();
+    auditLogsOffset = 0;
+    void loadAuditLogs();
   }
 
   async function loadAuditLogs() {
@@ -2669,6 +2763,14 @@
       historicoTempoOsChart.destroy();
       historicoTempoOsChart = null;
     }
+    if (historicoClassesChart) {
+      historicoClassesChart.destroy();
+      historicoClassesChart = null;
+    }
+    if (historicoResumoBarChart) {
+      historicoResumoBarChart.destroy();
+      historicoResumoBarChart = null;
+    }
   }
 
   function historicoCssVar(name, fallback) {
@@ -2712,6 +2814,27 @@
     patch(historicoRemediosChart);
     patch(historicoOsChart);
     patch(historicoTempoOsChart);
+    if (historicoClassesChart && historicoClassesChart._historicoPieTheme) {
+      const ds = historicoClassesChart.data.datasets[0];
+      ds.borderColor = historicoCssVar("--card-bg", "#1f2937");
+      const legendOpts = historicoClassesChart.options?.plugins?.legend?.labels;
+      if (legendOpts) legendOpts.color = historicoCssVar("--text", "#e8f0f6");
+      historicoClassesChart.update();
+    }
+    if (historicoResumoBarChart && historicoResumoBarChart._historicoBarTheme) {
+      const c = historicoResumoBarChart;
+      if (c.options?.scales?.x) {
+        c.options.scales.x.grid.color = grid;
+        c.options.scales.x.ticks.color = tick;
+      }
+      if (c.options?.scales?.y) {
+        c.options.scales.y.grid.color = grid;
+        c.options.scales.y.ticks.color = tick;
+      }
+      const lbl = c.options?.plugins?.legend?.labels;
+      if (lbl) lbl.color = historicoCssVar("--text", "#e8f0f6");
+      c.update();
+    }
   }
 
   /**
@@ -2843,15 +2966,193 @@
     return chart;
   }
 
+  /**
+   * Paleta estável para as fatias da pizza de classes. As cores são escolhidas
+   * para manter bom contraste em tema claro e escuro.
+   */
+  const HISTORICO_CLASSES_PALETTE = [
+    "#0082df",
+    "#00b8a9",
+    "#f4a261",
+    "#e76f51",
+    "#9b5de5",
+    "#2a9d8f",
+    "#f5a524",
+    "#ef476f",
+    "#118ab2",
+    "#06d6a0",
+    "#8338ec",
+    "#fb5607",
+    "#3a86ff",
+    "#ffbe0b",
+    "#8d99ae",
+  ];
+
+  /**
+   * @param {string} canvasId
+   * @param {Array<{classe: string, quantidade: number, percentual: number}>} items
+   */
+  function createHistoricoClassesPieChart(canvasId, items) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof window.Chart === "undefined") return null;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const labels = items.map((i) => i.classe);
+    const values = items.map((i) => Number(i.quantidade) || 0);
+    const colors = items.map((_, i) => HISTORICO_CLASSES_PALETTE[i % HISTORICO_CLASSES_PALETTE.length]);
+    const total = values.reduce((a, b) => a + b, 0);
+    const nf = new Intl.NumberFormat("pt-BR");
+    const legendColor = historicoCssVar("--text", "#e8f0f6");
+    const borderColor = historicoCssVar("--card-bg", "#1f2937");
+    const chart = new window.Chart(ctx, {
+      type: "pie",
+      data: {
+        labels,
+        datasets: [
+          {
+            data: values,
+            backgroundColor: colors,
+            borderColor,
+            borderWidth: 2,
+            hoverOffset: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        plugins: {
+          colors: { enabled: false },
+          legend: {
+            position: "right",
+            labels: {
+              color: legendColor,
+              usePointStyle: true,
+              padding: 10,
+              generateLabels(c) {
+                const ds = c.data.datasets[0];
+                // `fontColor` é necessário por item porque LegendItem
+                // sobrescreve o labels.color quando vem de generateLabels.
+                const fontColor = historicoCssVar("--text", "#e8f0f6");
+                return (c.data.labels || []).map((label, i) => {
+                  const v = Number(ds.data[i]) || 0;
+                  const pct = total > 0 ? ((100 * v) / total).toFixed(1) : "0.0";
+                  return {
+                    text: `${label} — ${nf.format(v)} (${pct}%)`,
+                    fillStyle: ds.backgroundColor[i],
+                    strokeStyle: ds.backgroundColor[i],
+                    fontColor,
+                    lineWidth: 0,
+                    pointStyle: "circle",
+                    hidden: false,
+                    index: i,
+                  };
+                });
+              },
+            },
+          },
+          tooltip: {
+            callbacks: {
+              label(item) {
+                const v = Number(item.parsed) || 0;
+                const pct = total > 0 ? ((100 * v) / total).toFixed(1) : "0.0";
+                return `${item.label}: ${nf.format(v)} (${pct}%)`;
+              },
+            },
+          },
+        },
+      },
+    });
+    chart._historicoPieTheme = true;
+    return chart;
+  }
+
+  /**
+   * Cria o gráfico de barras "Resumo do período" — comparação direta de OS concluídas × canceladas.
+   * Eventos permanentes: uma OS cancelada e depois refeita/concluída conta 1 em cada barra.
+   * @param {string} canvasId
+   * @param {{concluidas: number, canceladas: number}} totals
+   */
+  function createHistoricoResumoBarChart(canvasId, totals) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof window.Chart === "undefined") return null;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    const grid = historicoCssVar("--historico-chart-grid", "rgba(128, 128, 128, 0.15)");
+    const tick = historicoCssVar("--text-muted", "#888");
+    const legendColor = historicoCssVar("--text", "#e8f0f6");
+    const colorOk = historicoCssVar("--accent", "#0082df");
+    const colorFail = historicoCssVar("--status-error-bg", "#d64545");
+    const nf = new Intl.NumberFormat("pt-BR");
+    const nConc = Number(totals.concluidas) || 0;
+    const nCanc = Number(totals.canceladas) || 0;
+    const chart = new window.Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: ["OS concluídas", "OS canceladas"],
+        datasets: [
+          {
+            label: "OS",
+            data: [nConc, nCanc],
+            backgroundColor: [colorOk, colorFail],
+            borderColor: [colorOk, colorFail],
+            borderWidth: 0,
+            borderRadius: 6,
+            maxBarThickness: 96,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        plugins: {
+          colors: { enabled: false },
+          legend: { display: false, labels: { color: legendColor } },
+          tooltip: {
+            callbacks: {
+              label(item) {
+                const v = Number(item.parsed.y) || 0;
+                return `${item.label}: ${nf.format(v)} OS`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: grid, display: false },
+            ticks: { color: tick },
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: grid },
+            ticks: {
+              color: tick,
+              precision: 0,
+              callback: (v) => nf.format(v),
+            },
+          },
+        },
+      },
+    });
+    chart._historicoBarTheme = true;
+    return chart;
+  }
+
   function renderHistoricoStats(data) {
     if (!el.historicoResult) return;
     destroyHistoricoCharts();
     const nConc = Number(data.ordens_concluidas) || 0;
     const nCanc = Number(data.ordens_canceladas) || 0;
     const nPausa = Number(data.ordens_com_pausa) || 0;
+    const isAggregate = data.robot_id == null;
     if (nConc === 0 && nCanc === 0 && nPausa === 0) {
+      const emptyMsg = isAggregate
+        ? "Nenhum resultado nesse intervalo para o conjunto dos separadores (sem OS concluídas, canceladas ou com pausa registrada)."
+        : "Nenhum resultado nesse intervalo para este separador (sem OS concluídas, canceladas ou com pausa registrada). Conclua, cancele ou use pausa na aba Operação para ver indicadores aqui.";
       el.historicoResult.innerHTML = `
-        <p class="historico-empty">Nenhum resultado nesse intervalo para este separador (sem OS concluídas, canceladas ou com pausa registrada). Conclua, cancele ou use pausa na aba Operação para ver indicadores aqui.</p>
+        <p class="historico-empty">${emptyMsg}</p>
       `;
       return;
     }
@@ -2864,6 +3165,9 @@
         ? `${formatHistoricoNum(data.tempo_medio_por_medicamento_segundos)} s`
         : "—";
     const showChart = nConc > 0;
+    const classes = Array.isArray(data.medicamentos_por_classe) ? data.medicamentos_por_classe : [];
+    const showPie = classes.length > 0;
+    const showBar = nConc > 0 || nCanc > 0;
     const chartBlock = showChart
       ? `
       <div class="historico-charts-row">
@@ -2889,6 +3193,30 @@
           </div>
         </div>
       </div>`
+      : "";
+    const nTotalOs = nConc + nCanc;
+    const pieCard = showPie
+      ? `
+        <div class="historico-chart-card historico-chart-card--pie" role="region" aria-label="Distribuição por classe terapêutica dos medicamentos">
+          <h3 class="historico-chart__title">Medicamentos por classe terapêutica</h3>
+          <p class="historico-chart__lede">Distribuição das ${formatHistoricoNum(classes.reduce((a, c) => a + (Number(c.quantidade) || 0), 0))} linhas de medicamento das OS concluídas no período.</p>
+          <div class="historico-chart__canvas-wrap historico-chart__canvas-wrap--pie">
+            <canvas id="historico-classes-chart" width="400" height="260"></canvas>
+          </div>
+        </div>`
+      : "";
+    const barCard = showBar
+      ? `
+        <div class="historico-chart-card historico-chart-card--bar" role="region" aria-label="Resumo do período: OS concluídas × canceladas">
+          <h3 class="historico-chart__title">Resumo do período <span class="historico-chart__chip" title="Soma de OS concluídas e canceladas no período">Total: ${formatHistoricoNum(nTotalOs)} OS</span></h3>
+          <p class="historico-chart__lede">OS concluídas × canceladas. Cada cancelamento é permanente: se a OS foi refeita e concluída depois, entra nas duas barras.</p>
+          <div class="historico-chart__canvas-wrap historico-chart__canvas-wrap--bar">
+            <canvas id="historico-resumo-bar-chart" width="400" height="220"></canvas>
+          </div>
+        </div>`
+      : "";
+    const sideBySideBlock = (showPie || showBar)
+      ? `<div class="historico-charts-row">${barCard}${pieCard}</div>`
       : "";
     el.historicoResult.innerHTML = `
       <div class="historico-stats-wrap">
@@ -2930,6 +3258,7 @@
         </div>
       </div>
       ${chartBlock}
+      ${sideBySideBlock}
       </div>
     `;
     if (showChart) {
@@ -2964,6 +3293,19 @@
           nullableValues: true,
           yTickPrecision: 1,
           formatTooltip: (v) => `${nf.format(v)} min`,
+        });
+      });
+    }
+    if (showPie) {
+      requestAnimationFrame(() => {
+        historicoClassesChart = createHistoricoClassesPieChart("historico-classes-chart", classes);
+      });
+    }
+    if (showBar) {
+      requestAnimationFrame(() => {
+        historicoResumoBarChart = createHistoricoResumoBarChart("historico-resumo-bar-chart", {
+          concluidas: nConc,
+          canceladas: nCanc,
         });
       });
     }
@@ -3232,6 +3574,13 @@
       populateManualOsRobotSelect();
       if (el.historicoRobot && !el.viewHistorico?.classList.contains("hidden")) {
         populateHistoricoRobotSelect();
+      }
+      if (
+        el.logsFilterRobot &&
+        !el.viewLogs?.classList.contains("hidden") &&
+        getLogsTabCategory() === "separador"
+      ) {
+        populateLogsRobotFilterSelect();
       }
       el.connStatus.textContent = "Conectado";
       el.connStatus.className = "badge badge--ok";
@@ -3857,12 +4206,20 @@
 
   el.btnLogsFilterClear?.addEventListener("click", () => {
     if (el.logsFilterUsername) el.logsFilterUsername.value = "";
-    if (el.logsFilterCategory) el.logsFilterCategory.value = "";
     if (el.logsFilterDe) el.logsFilterDe.value = "";
     if (el.logsFilterAte) el.logsFilterAte.value = "";
+    if (el.logsFilterRobot) el.logsFilterRobot.value = "";
     auditLogsOffset = 0;
     void loadAuditLogs();
   });
+
+  el.logsFilterRobot?.addEventListener("change", () => {
+    auditLogsOffset = 0;
+    void loadAuditLogs();
+  });
+
+  el.tabLogsUsuario?.addEventListener("click", () => setLogsTabCategory("usuario"));
+  el.tabLogsSeparador?.addEventListener("click", () => setLogsTabCategory("separador"));
 
   el.logsResult?.addEventListener("change", (ev) => {
     const t = ev.target;
@@ -3958,7 +4315,11 @@
       '<p class="historico-empty" role="status">Consultando…</p>';
     try {
       const params = new URLSearchParams({ de, ate });
-      const res = await fetch(`${API_BASE}/robots/${encodeURIComponent(rid)}/historico?${params}`, FETCH_CRED);
+      const url =
+        rid === HISTORICO_ALL_SEPARADORES
+          ? `${API_BASE}/robots/historico-todos?${params}`
+          : `${API_BASE}/robots/${encodeURIComponent(rid)}/historico?${params}`;
+      const res = await fetch(url, FETCH_CRED);
       const text = await res.text();
       if (res.status === 401) {
         window.location.replace("/login.html");

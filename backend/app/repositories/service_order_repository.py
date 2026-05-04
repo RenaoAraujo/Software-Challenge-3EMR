@@ -67,6 +67,69 @@ class ServiceOrderRepository:
         )
         return int(self._db.scalar(stmt) or 0)
 
+    def list_completed_between(
+        self,
+        start_utc: datetime,
+        end_utc_exclusive: datetime,
+    ) -> list[ServiceOrder]:
+        """OS concluídas (por qualquer separador) dentro do intervalo."""
+        stmt = (
+            select(ServiceOrder)
+            .where(
+                and_(
+                    ServiceOrder.status == ServiceOrderStatus.COMPLETED.value,
+                    ServiceOrder.completed_at.is_not(None),
+                    ServiceOrder.completed_at >= start_utc,
+                    ServiceOrder.completed_at < end_utc_exclusive,
+                )
+            )
+            .order_by(ServiceOrder.completed_at.desc())
+        )
+        return list(self._db.scalars(stmt).all())
+
+    def count_cancelled_between(
+        self,
+        start_utc: datetime,
+        end_utc_exclusive: datetime,
+    ) -> int:
+        """OS canceladas (por qualquer separador) dentro do intervalo."""
+        stmt = (
+            select(func.count())
+            .select_from(ServiceOrder)
+            .where(
+                and_(
+                    ServiceOrder.status == ServiceOrderStatus.CANCELLED.value,
+                    ServiceOrder.cancelled_at.is_not(None),
+                    ServiceOrder.cancelled_at >= start_utc,
+                    ServiceOrder.cancelled_at < end_utc_exclusive,
+                )
+            )
+        )
+        return int(self._db.scalar(stmt) or 0)
+
+    def count_ended_with_pause_between(
+        self,
+        start_utc: datetime,
+        end_utc_exclusive: datetime,
+    ) -> int:
+        """OS concluídas ou canceladas no período com ao menos uma pausa registrada (todos os separadores)."""
+        completed = and_(
+            ServiceOrder.status == ServiceOrderStatus.COMPLETED.value,
+            ServiceOrder.completed_at.is_not(None),
+            ServiceOrder.completed_at >= start_utc,
+            ServiceOrder.completed_at < end_utc_exclusive,
+            ServiceOrder.pause_count > 0,
+        )
+        cancelled = and_(
+            ServiceOrder.status == ServiceOrderStatus.CANCELLED.value,
+            ServiceOrder.cancelled_at.is_not(None),
+            ServiceOrder.cancelled_at >= start_utc,
+            ServiceOrder.cancelled_at < end_utc_exclusive,
+            ServiceOrder.pause_count > 0,
+        )
+        stmt = select(func.count()).select_from(ServiceOrder).where(or_(completed, cancelled))
+        return int(self._db.scalar(stmt) or 0)
+
     def count_ended_with_pause_by_robot_between(
         self,
         robot_id: int,
