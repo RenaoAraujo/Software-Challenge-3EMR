@@ -7,6 +7,7 @@ from app.api.routers import csrf as csrf_router
 from app.api.routers import health
 from app.api.routers import notifications as notifications_router
 from app.api.routers import robots
+from app.api.routers import serial as serial_router
 from app.api.routers import service_orders
 
 _auth = [Depends(require_auth)]
@@ -19,3 +20,4 @@ api_router.include_router(robots.router, tags=["robôs"], dependencies=_auth)
 api_router.include_router(service_orders.router, tags=["ordens de serviço"], dependencies=_auth)
 api_router.include_router(notifications_router.router, tags=["notificações"], dependencies=_auth)
 api_router.include_router(admin_router.router, tags=["administração"])
+api_router.include_router(serial_router.router, tags=["serial"], dependencies=_auth)

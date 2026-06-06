@@ -27,6 +27,14 @@ class MedicineReportLine(BaseModel):
     remedio: str = ""
     tipo_remedio: str = ""
     classe_remedio: str = ""
+    peso_teorico: float | None = Field(
+        default=None,
+        description="Peso teórico do produto em gramas, conforme planilha do estoque.",
+    )
+    peso_real: float | None = Field(
+        default=None,
+        description="Peso real aferido na separação (preenchido pelo separador; vazio por enquanto).",
+    )
     numero: int = 0
     tempo_gasto: str = ""
     situacao_coleta: Literal["concluida", "cancelada"] = Field(

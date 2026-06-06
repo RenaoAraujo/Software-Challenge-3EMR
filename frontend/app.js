@@ -184,6 +184,10 @@
     relatorioBatchFiltroBaixado: document.getElementById("relatorio-batch-filtro-baixado"),
     relatorioBatchDownload: document.getElementById("relatorio-batch-download"),
     relatorioBatchPreview: document.getElementById("relatorio-batch-preview"),
+    btnSerial: document.getElementById("btn-serial"),
+    serialBtnLabel: document.getElementById("serial-btn-label"),
+    serialBtnDot: document.getElementById("serial-btn-dot"),
+    serialModal: document.getElementById("serial-modal"),
   };
 
   let csrfToken = "";
@@ -196,6 +200,7 @@
   let profileDrawerView = "own";
   let selectedRobotId = null;
   let robotsCache = [];
+  let serialStatus = { connected: false, connecting: false, port: null, robot_name: null, error: null };
   let historicoRemediosChart = null;
   let historicoOsChart = null;
   let historicoTempoOsChart = null;
@@ -3242,11 +3247,6 @@
           <span class="metric-box__hint">registradas ao concluir</span>
         </div>
         <div class="metric-box metric-box--time" role="listitem">
-          <span class="metric-box__label">Unidades previstas (total)</span>
-          <p class="metric-box__value metric-box__value--elapsed">${formatHistoricoNum(data.unidades_previstas_total)}</p>
-          <span class="metric-box__hint">soma das OS</span>
-        </div>
-        <div class="metric-box metric-box--time" role="listitem">
           <span class="metric-box__label">Tempo médio por OS</span>
           <p class="metric-box__value metric-box__value--elapsed">${tmed}</p>
           <span class="metric-box__hint">do envio à conclusão</span>
@@ -4470,7 +4470,11 @@
       closeEditModal();
       return;
     }
-    if (el.newRobotModal && !el.newRobotModal.hidden) {
+    if (!document.getElementById("serial-modal")?.hidden) {
+      e.preventDefault();
+      closeSerialModal();
+      return;
+    }    if (el.newRobotModal && !el.newRobotModal.hidden) {
       e.preventDefault();
       closeNewRobotModal();
       return;
@@ -4515,6 +4519,200 @@
     void loadRobots({ silent: true });
   });
 
+  // ── Serial Gateway ─────────────────────────────────────────────────────────
+
+  function applySerialStatus(s) {
+    serialStatus = s;
+    const btn = document.getElementById("btn-serial");
+    const label = document.getElementById("serial-btn-label");
+    if (!btn || !label) return;
+
+    btn.classList.remove("serial-btn--connected", "serial-btn--connecting", "serial-btn--error");
+
+    if (s.connecting) {
+      btn.classList.add("serial-btn--connecting");
+      label.textContent = s.port || "ESP32";
+      btn.title = `Conectando à porta ${s.port}…`;
+    } else if (s.connected) {
+      btn.classList.add("serial-btn--connected");
+      label.textContent = s.port || "ESP32";
+      btn.title = `Conectado: ${s.port} — ${s.robot_name || ""}`;
+    } else if (s.error) {
+      btn.classList.add("serial-btn--error");
+      label.textContent = "ESP32";
+      btn.title = `Erro: ${s.error}`;
+    } else {
+      label.textContent = "ESP32";
+      btn.title = "Conexão serial ESP32 — clique para configurar";
+    }
+  }
+
+  async function fetchSerialStatus() {
+    try {
+      const res = await fetch(`${API_BASE}/serial/status`, FETCH_CRED);
+      if (!res.ok) return;
+      applySerialStatus(await res.json());
+    } catch { /* ignore */ }
+  }
+
+  async function loadSerialPorts() {
+    const sel = document.getElementById("serial-port-select");
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Buscando…</option>';
+    try {
+      const res = await fetch(`${API_BASE}/serial/ports`, FETCH_CRED);
+      if (!res.ok) throw new Error();
+      const ports = await res.json();
+      if (!ports.length) {
+        sel.innerHTML = '<option value="">Nenhuma porta detectada — conecte o ESP32</option>';
+      } else {
+        sel.innerHTML = ports.map((p) =>
+          `<option value="${p.device}">${p.device} — ${p.description}</option>`
+        ).join("");
+      }
+    } catch {
+      sel.innerHTML = '<option value="">Erro ao listar portas</option>';
+    }
+  }
+
+  function syncSerialModalState() {
+    const s = serialStatus;
+    const statusRow = document.getElementById("serial-status-row");
+    const statusText = document.getElementById("serial-modal-status-text");
+    const portSel = document.getElementById("serial-port-select");
+    const robotSel = document.getElementById("serial-robot-select");
+    const btnConn = document.getElementById("btn-serial-connect");
+    const btnDisc = document.getElementById("btn-serial-disconnect");
+    if (!btnConn || !btnDisc) return;
+
+    const isActive = s.connected || s.connecting || !!s.error;
+    if (statusRow) statusRow.hidden = !isActive;
+
+    if (s.connected) {
+      if (statusRow) statusRow.className = "serial-status-row";
+      if (statusText) statusText.textContent = `Conectado: ${s.port} — ${s.robot_name || "—"}`;
+      btnConn.hidden = true;
+      btnDisc.hidden = false;
+      if (portSel) portSel.disabled = true;
+      if (robotSel) robotSel.disabled = true;
+    } else if (s.connecting) {
+      if (statusRow) statusRow.className = "serial-status-row";
+      if (statusText) statusText.textContent = `Conectando à porta ${s.port}…`;
+      btnConn.hidden = true;
+      btnDisc.hidden = false;
+    } else {
+      if (s.error && statusRow) statusRow.className = "serial-status-row serial-status-row--error";
+      if (statusText && s.error) statusText.textContent = `Erro: ${s.error}`;
+      btnConn.hidden = false;
+      btnDisc.hidden = true;
+      if (portSel) portSel.disabled = false;
+      if (robotSel) robotSel.disabled = false;
+    }
+  }
+
+  function openSerialModal() {
+    const modal = document.getElementById("serial-modal");
+    if (!modal) return;
+    modal.hidden = false;
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+    syncSerialModalState();
+    void loadSerialPorts();
+    // preenche separadores
+    const robotSel = document.getElementById("serial-robot-select");
+    if (robotSel && robotsCache.length) {
+      robotSel.innerHTML = robotsCache.map((r) =>
+        `<option value="${r.id}" data-name="${r.name}">${r.name} (${r.code})</option>`
+      ).join("");
+    }
+  }
+
+  function closeSerialModal() {
+    const modal = document.getElementById("serial-modal");
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute("aria-hidden", "true");
+    if (
+      el.deleteModal.hidden && el.editModal.hidden &&
+      (!el.newRobotModal || el.newRobotModal.hidden) &&
+      (!el.manualOsModal || el.manualOsModal.hidden) &&
+      (!el.cancelOsModal || el.cancelOsModal.hidden)
+    ) {
+      document.body.classList.remove("modal-open");
+    }
+  }
+
+  function initSerialListeners() {
+    const btnOpen = document.getElementById("btn-serial");
+    if (btnOpen) btnOpen.addEventListener("click", openSerialModal);
+
+    document.getElementById("serial-modal")
+      ?.querySelectorAll("[data-serial-modal-dismiss]")
+      .forEach((n) => n.addEventListener("click", closeSerialModal));
+
+    document.getElementById("btn-serial-refresh-ports")
+      ?.addEventListener("click", loadSerialPorts);
+
+    document.getElementById("form-serial-connect")
+      ?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const port = document.getElementById("serial-port-select")?.value;
+        const robotSel = document.getElementById("serial-robot-select");
+        const robotId = parseInt(robotSel?.value || "0", 10);
+        const robotName = robotSel?.options[robotSel.selectedIndex]?.dataset?.name || "";
+        const btnConn = document.getElementById("btn-serial-connect");
+
+        if (!port) { toast("Selecione uma porta serial.", "error"); return; }
+        if (!robotId) { toast("Selecione um separador.", "error"); return; }
+
+        if (btnConn) btnConn.disabled = true;
+        try {
+          await fetchCsrf();
+          const res = await apiJson("/serial/connect", {
+            method: "POST",
+            body: JSON.stringify({ port, robot_id: robotId, robot_name: robotName }),
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            let msg = `Erro ${res.status}`;
+            try { msg = JSON.parse(text).detail || msg; } catch { if (text) msg = text; }
+            toast(msg, "error");
+            return;
+          }
+          toast(`Conectando à porta ${port}…`, "success");
+          await fetchSerialStatus();
+          syncSerialModalState();
+        } catch (err) {
+          toast(err instanceof Error ? err.message : "Erro ao conectar.", "error");
+        } finally {
+          if (btnConn) btnConn.disabled = false;
+        }
+      });
+
+    document.getElementById("btn-serial-disconnect")
+      ?.addEventListener("click", async () => {
+        const btnDisc = document.getElementById("btn-serial-disconnect");
+        if (btnDisc) btnDisc.disabled = true;
+        try {
+          await fetchCsrf();
+          const res = await apiJson("/serial/disconnect", { method: "POST" });
+          if (!res.ok) { toast("Erro ao desconectar.", "error"); return; }
+          toast("Desconectado.", "success");
+          await fetchSerialStatus();
+          syncSerialModalState();
+        } catch (err) {
+          toast(err instanceof Error ? err.message : "Erro ao desconectar.", "error");
+        } finally {
+          const btnDisc = document.getElementById("btn-serial-disconnect");
+          if (btnDisc) btnDisc.disabled = false;
+        }
+      });
+  }
+
+  setInterval(fetchSerialStatus, 5000);
+
+  // ── Fim Serial Gateway ──────────────────────────────────────────────────────
+
   async function boot() {
     initThemeToggle();
     initHistoricoDefaultDates();
@@ -4544,6 +4742,8 @@
         /* ignore */
       }
       await loadRobots();
+      void fetchSerialStatus();
+      initSerialListeners();
       const restore = readLastAppView();
       if (restore === "historico" || restore === "relatorio" || restore === "logs") {
         setAppView(restore);

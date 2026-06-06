@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.router import api_router
+from app.bootstrap.backfill_medicine_classes import backfill_medicine_classes
 from app.bootstrap.backfill_order_events import backfill_order_events_if_empty
 from app.bootstrap.seed import (
     ensure_admin_user,
@@ -33,6 +34,7 @@ async def lifespan(_: FastAPI):
         ensure_common_test_user(db)
         ensure_admin_user(db)
         backfill_order_events_if_empty(db)
+        backfill_medicine_classes(db)
     finally:
         db.close()
     yield

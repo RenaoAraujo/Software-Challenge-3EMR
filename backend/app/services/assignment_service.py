@@ -7,11 +7,10 @@ from sqlalchemy.orm import Session
 from app.models.entities import Robot, RobotStatus, ServiceOrder, ServiceOrderStatus
 from app.repositories.robot_repository import RobotRepository
 from app.repositories.service_order_repository import ServiceOrderRepository
-from app.services.medicine_classification import random_medicines_for_classes
+from app.services.product_catalog import random_products
 
-# Classes de remédio sorteadas no modo aleatório/teste — mantidas no nível do módulo
-# para facilitar ajuste futuro (ex.: incluir outras especialidades).
-_RANDOM_MEDICINE_CLASSES: tuple[str, ...] = ("Urológica", "Reumatológica", "Ortopédica")
+# Mantido para compatibilidade com código que importa esta constante.
+_RANDOM_MEDICINE_CLASSES: tuple[str, ...] = ()
 
 
 class AssignmentError(Exception):
@@ -148,7 +147,7 @@ class AssignmentService:
         self._strip_cancel_snapshot(order)
 
         if reopen_mode == "restart":
-            meds = random_medicines_for_classes(_RANDOM_MEDICINE_CLASSES, quantidade_remedios)
+            meds = random_products(quantidade_remedios)
             order.client_name = (client_name or "").strip()
             order.expected_units = quantidade_remedios
             order.medicines_json = json.dumps(meds, ensure_ascii=False)
@@ -198,7 +197,7 @@ class AssignmentService:
                 )
             raise AssignmentError("Já existe uma OS com este número.", "duplicate_os")
 
-        meds = random_medicines_for_classes(_RANDOM_MEDICINE_CLASSES, quantidade_remedios)
+        meds = random_products(quantidade_remedios)
         order = ServiceOrder(
             os_code=code,
             description="OS manual — teste",

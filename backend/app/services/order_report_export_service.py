@@ -13,7 +13,7 @@ import re
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from openpyxl import Workbook
@@ -26,6 +26,7 @@ from app.models.entities import ServiceOrder, ServiceOrderStatus
 from app.repositories.robot_repository import RobotRepository
 from app.schemas.service_order import MedicineReportLine, OrderReportItem
 from app.services.historico_service import _data_conclusao_calendario_br
+from app.services.medicine_classification import classify_medicine
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 _IMG_DIR = Path(__file__).resolve().parent.parent / "img"
@@ -180,6 +181,16 @@ def _pdf_medicamentos_por_classe(item: OrderReportItem) -> list[dict[str, str | 
     ]
 
 
+def _pdf_peso_total(item: OrderReportItem) -> str:
+    """Soma o peso_teorico de todas as linhas de remédio e formata para exibição no PDF."""
+    total_g = sum(
+        ml.peso_teorico for ml in item.medicine_lines if ml.peso_teorico is not None
+    )
+    if total_g <= 0:
+        return "—"
+    return _format_weight(total_g)
+
+
 def _get_pdf_jinja_env() -> Environment:
     global _pdf_jinja_env
     if _pdf_jinja_env is None:
@@ -230,6 +241,7 @@ def _order_report_pdf_context(
         "exportado_por": exportado_por,
         "data_exportacao": data_exportacao,
         "medicamentos_por_classe": _pdf_medicamentos_por_classe(item),
+        "peso_total": _pdf_peso_total(item),
     }
 
 
@@ -315,6 +327,8 @@ _REPORT_HEADERS_BASE = [
     "Remédio",
     "Tipo Remédio",
     "Classe Remédio",
+    "Peso Teórico (g)",
+    "Peso Real (g)",
     "Número",
     "Tempo Gasto",
     "Porcentagem de conclusão",
@@ -355,6 +369,18 @@ def _format_seconds_as_min_sec(sec: float | None) -> str:
     return f"{m} min {s} s"
 
 
+def _format_weight(grams: float) -> str:
+    """Formata gramas: abaixo de 1 000 g mostra só «X g»; acima usa «X kg Y g» (ou «X kg» se resto = 0)."""
+    total = int(round(grams))
+    if total < 1000:
+        return f"{total} g"
+    kg = total // 1000
+    rem = total % 1000
+    if rem == 0:
+        return f"{kg} kg"
+    return f"{kg} kg {rem} g"
+
+
 def _wall_seconds_total(order: ServiceOrder) -> float | None:
     """Tempo total (atribuição → encerramento), em segundos."""
     if order.status == ServiceOrderStatus.COMPLETED.value:
@@ -384,10 +410,12 @@ def _liquid_seconds(order: ServiceOrder) -> float | None:
     return max(0.0, float(wall) - float(max(0, int(ps))))
 
 
-def _medicine_entries_from_order(order: ServiceOrder) -> list[tuple[str, str, str]]:
+def _medicine_entries_from_order(order: ServiceOrder) -> list[dict]:
     """
-    Lista (nome, tipo, classe) a partir de medicines_json.
-    Itens em string só têm nome; objetos podem trazer tipo_remedio/tipo e classe_remedio/classe.
+    Lista de dicts com remedio_id, remedio, tipo_remedio, classe_remedio e peso_teorico.
+
+    Itens em string têm só nome e classe inferida; dicts podem trazer todos os campos
+    incluindo peso_teorico (vindo do catálogo real de produtos).
     """
     try:
         data = json.loads(order.medicines_json or "[]")
@@ -395,12 +423,19 @@ def _medicine_entries_from_order(order: ServiceOrder) -> list[tuple[str, str, st
         return []
     if not isinstance(data, list):
         return []
-    out: list[tuple[str, str, str]] = []
+    out: list[dict] = []
     for x in data:
         if isinstance(x, str):
             s = x.strip()
             if s:
-                out.append((s, "", ""))
+                out.append({
+                    "remedio_id": "",
+                    "remedio": s,
+                    "tipo_remedio": "",
+                    "classe_remedio": classify_medicine(s),
+                    "peso_teorico": None,
+                    "picked_at": None,
+                })
         elif isinstance(x, dict):
             nome = str(
                 x.get("remedio") or x.get("nome") or x.get("name") or "",
@@ -411,12 +446,37 @@ def _medicine_entries_from_order(order: ServiceOrder) -> list[tuple[str, str, st
             classe = str(
                 x.get("classe_remedio") or x.get("classe") or "",
             ).strip()
+            if not classe:
+                classe = classify_medicine(nome)
+            rid = str(x.get("remedio_id") or "").strip()
+            peso_raw = x.get("peso_teorico")
+            peso: float | None = None
+            if peso_raw is not None:
+                try:
+                    peso = float(peso_raw)
+                except (ValueError, TypeError):
+                    peso = None
+            picked_at = x.get("picked_at") or None
             if nome:
-                out.append((nome, tipo, classe))
+                out.append({
+                    "remedio_id": rid,
+                    "remedio": nome,
+                    "tipo_remedio": tipo,
+                    "classe_remedio": classe,
+                    "peso_teorico": peso,
+                    "picked_at": picked_at,
+                })
         else:
             s = str(x).strip()
             if s:
-                out.append((s, "", ""))
+                out.append({
+                    "remedio_id": "",
+                    "remedio": s,
+                    "tipo_remedio": "",
+                    "classe_remedio": classify_medicine(s),
+                    "peso_teorico": None,
+                    "picked_at": None,
+                })
     return out
 
 
@@ -425,6 +485,26 @@ def _porcentagem_str(quantidade_total: int, quantidade_separada: int) -> str:
         return ""
     pct = min(100.0, 100.0 * float(quantidade_separada) / float(quantidade_total))
     return f"{pct:.1f}".replace(".", ",") + "%"
+
+
+def _elapsed_from_start(assigned_at: Any, picked_at_str: str | None) -> float | None:
+    """Segundos decorridos desde assigned_at até o picked_at do remédio.
+
+    Retorna None se qualquer um dos valores estiver ausente ou for inválido.
+    """
+    if not picked_at_str or assigned_at is None:
+        return None
+    try:
+        from datetime import datetime as _dt
+
+        picked = _dt.fromisoformat(picked_at_str)
+        a = _normalize_utc(assigned_at)
+        if picked.tzinfo is None:
+            picked = picked.replace(tzinfo=UTC)
+        elapsed = (picked - a).total_seconds()
+        return elapsed if elapsed >= 0 else None
+    except Exception:
+        return None
 
 
 def _tempo_segundos_por_unidade(order: ServiceOrder) -> float | None:
@@ -507,53 +587,59 @@ def order_to_report_item(db: Session, order: ServiceOrder) -> OrderReportItem | 
     n_med = len(entries)
     medicine_lines: list[MedicineReportLine] = []
     if situacao == "concluida":
-        if n_med > 0 and liquid_s is not None:
-            per = liquid_s / float(n_med)
-            for i, (name, tipo, classe) in enumerate(entries):
-                med_num = i + 1
-                medicine_lines.append(
-                    MedicineReportLine(
-                        remedio_id=str(med_num),
-                        remedio=name,
-                        tipo_remedio=tipo,
-                        classe_remedio=classe,
-                        numero=med_num,
-                        situacao_coleta="concluida",
-                        tempo_gasto=_format_seconds_as_min_sec(per),
-                    )
-                )
-        elif n_med > 0:
-            for i, (name, tipo, classe) in enumerate(entries):
-                med_num = i + 1
-                medicine_lines.append(
-                    MedicineReportLine(
-                        remedio_id=str(med_num),
-                        remedio=name,
-                        tipo_remedio=tipo,
-                        classe_remedio=classe,
-                        numero=med_num,
-                        situacao_coleta="concluida",
-                        tempo_gasto="",
-                    )
-                )
-    else:
-        # Cancelada: todas as linhas do pedido; índice < cancelled_separated_units = já separado; resto = ainda na fila.
-        u_sep = min(max(0, int(order.cancelled_separated_units or 0)), n_med)
-        tu = _tempo_segundos_por_unidade(order)
-        tempo_sep = _format_seconds_as_min_sec(tu) if tu is not None else ""
-        for i, (name, tipo, classe) in enumerate(entries):
+        per = (liquid_s / float(n_med)) if (liquid_s is not None and n_med > 0) else None
+        for i, entry in enumerate(entries):
             med_num = i + 1
-            ja = i < u_sep
-            sc: Literal["concluida", "cancelada"] = "concluida" if ja else "cancelada"
+            rid = entry["remedio_id"] or str(med_num)
+            # Prefere o tempo real de coleta; cai na distribuição igualitária como fallback
+            elapsed = _elapsed_from_start(order.assigned_at, entry.get("picked_at"))
+            if elapsed is not None:
+                tempo_gasto_str = _format_seconds_as_min_sec(elapsed)
+            elif per is not None:
+                tempo_gasto_str = _format_seconds_as_min_sec(per)
+            else:
+                tempo_gasto_str = ""
             medicine_lines.append(
                 MedicineReportLine(
-                    remedio_id=str(med_num),
-                    remedio=name,
-                    tipo_remedio=tipo,
-                    classe_remedio=classe,
+                    remedio_id=rid,
+                    remedio=entry["remedio"],
+                    tipo_remedio=entry["tipo_remedio"],
+                    classe_remedio=entry["classe_remedio"],
+                    peso_teorico=entry["peso_teorico"],
+                    numero=med_num,
+                    situacao_coleta="concluida",
+                    tempo_gasto=tempo_gasto_str,
+                )
+            )
+    else:
+        # Cancelada: índice < cancelled_separated_units = já coletado; resto = ainda na fila.
+        u_sep = min(max(0, int(order.cancelled_separated_units or 0)), n_med)
+        tu = _tempo_segundos_por_unidade(order)
+        for i, entry in enumerate(entries):
+            med_num = i + 1
+            rid = entry["remedio_id"] or str(med_num)
+            ja = i < u_sep
+            sc: Literal["concluida", "cancelada"] = "concluida" if ja else "cancelada"
+            if ja:
+                elapsed = _elapsed_from_start(order.assigned_at, entry.get("picked_at"))
+                if elapsed is not None:
+                    tempo_gasto_str = _format_seconds_as_min_sec(elapsed)
+                elif tu is not None:
+                    tempo_gasto_str = _format_seconds_as_min_sec(tu)
+                else:
+                    tempo_gasto_str = ""
+            else:
+                tempo_gasto_str = ""
+            medicine_lines.append(
+                MedicineReportLine(
+                    remedio_id=rid,
+                    remedio=entry["remedio"],
+                    tipo_remedio=entry["tipo_remedio"],
+                    classe_remedio=entry["classe_remedio"],
+                    peso_teorico=entry["peso_teorico"],
                     numero=med_num,
                     situacao_coleta=sc,
-                    tempo_gasto=tempo_sep if ja else "",
+                    tempo_gasto=tempo_gasto_str,
                 )
             )
 
@@ -607,15 +693,17 @@ def _row_cells(
     *,
     exportado_por: str,
     data_exportacao: str,
-) -> list[str | int]:
+) -> list[str | int | float]:
     data_str = item.data.strftime("%d/%m/%Y") if item.data else ""
     if med is None:
-        mid, mname, mtipo, mclasse, mnum, mt, mest = "", "", "", "", "", "", ""
+        mid, mname, mtipo, mclasse, mpeso_t, mpeso_r, mnum, mt, mest = "", "", "", "", "", "", "", "", ""
     else:
         mid = med.remedio_id
         mname = med.remedio
         mtipo = med.tipo_remedio or ""
         mclasse = med.classe_remedio or ""
+        mpeso_t: float | str = med.peso_teorico if med.peso_teorico is not None else ""
+        mpeso_r: float | str = med.peso_real if med.peso_real is not None else ""
         mnum = med.numero
         mt = med.tempo_gasto
         mest = _situacao_linha_remedio_label(med.situacao_coleta)
@@ -625,7 +713,7 @@ def _row_cells(
         if med is not None and med.situacao_coleta == "concluida"
         else ""
     )
-    base: list[str | int] = [
+    base: list[str | int | float] = [
         data_str,
         item.os_code,
         item.client_name or "",
@@ -638,6 +726,8 @@ def _row_cells(
         mname,
         mtipo,
         mclasse,
+        mpeso_t,
+        mpeso_r,
         mnum,
         mt,
         item.porcentagem_conclusao or "",
@@ -664,16 +754,18 @@ def _row_cells_batch(
     *,
     exportado_por: str,
     data_exportacao: str,
-) -> list[str | int]:
+) -> list[str | int | float]:
     """Uma linha no ficheiro de lote: mesmas colunas para todas as OS (erro vazio se concluída)."""
     data_str = item.data.strftime("%d/%m/%Y") if item.data else ""
     if med is None:
-        mid, mname, mtipo, mclasse, mnum, mt, mest = "", "", "", "", "", "", ""
+        mid, mname, mtipo, mclasse, mpeso_t, mpeso_r, mnum, mt, mest = "", "", "", "", "", "", "", "", ""
     else:
         mid = med.remedio_id
         mname = med.remedio
         mtipo = med.tipo_remedio or ""
         mclasse = med.classe_remedio or ""
+        mpeso_t: float | str = med.peso_teorico if med.peso_teorico is not None else ""
+        mpeso_r: float | str = med.peso_real if med.peso_real is not None else ""
         mnum = med.numero
         mt = med.tempo_gasto
         mest = _situacao_linha_remedio_label(med.situacao_coleta)
@@ -683,7 +775,7 @@ def _row_cells_batch(
         if med is not None and med.situacao_coleta == "concluida"
         else ""
     )
-    base: list[str | int] = [
+    base: list[str | int | float] = [
         data_str,
         item.os_code,
         item.client_name or "",
@@ -696,6 +788,8 @@ def _row_cells_batch(
         mname,
         mtipo,
         mclasse,
+        mpeso_t,
+        mpeso_r,
         mnum,
         mt,
         item.porcentagem_conclusao or "",

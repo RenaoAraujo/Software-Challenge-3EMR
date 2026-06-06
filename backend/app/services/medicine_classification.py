@@ -311,6 +311,15 @@ def classes_count() -> int:
     return len(_MEDICINE_CLASS_KEYWORDS)
 
 
+def all_known_classes() -> tuple[str, ...]:
+    """Devolve a tupla com os nomes de todas as classes terapêuticas conhecidas (sem 'Outros').
+
+    Pensada para callers que precisam sortear medicamentos cobrindo todo o espectro
+    suportado pelo classificador, sem duplicar a lista em outros módulos.
+    """
+    return tuple(classe for classe, _ in _MEDICINE_CLASS_KEYWORDS)
+
+
 def _keywords_for_class(target: str) -> tuple[str, ...]:
     """Devolve a tupla de palavras-chave da classe (case-insensitive). Vazia se a classe não existe."""
     t = target.strip().lower()
