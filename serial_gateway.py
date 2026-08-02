@@ -179,6 +179,20 @@ class EMRClient:
         )
         log.info("OS cancelada no robô %d — motivo: %s", robot_id, reason)
 
+    def pause_robot(self, robot_id: int) -> None:
+        try:
+            self._post(f"/robots/{robot_id}/pausar")
+            log.info("Robô %d pausado", robot_id)
+        except requests.HTTPError as exc:
+            log.warning("pause_robot ignorado: %s", exc)
+
+    def resume_robot(self, robot_id: int) -> None:
+        try:
+            self._post(f"/robots/{robot_id}/retomar")
+            log.info("Robô %d retomado", robot_id)
+        except requests.HTTPError as exc:
+            log.warning("resume_robot ignorado: %s", exc)
+
     def get_last_closed_order(self, os_code: str) -> dict | None:
         try:
             data = self._get(f"/service-orders/completed?os={os_code}&limit=1")
@@ -256,6 +270,14 @@ class EventProcessor:
             self._client.update_units(rid, done)
             self._client.cancel_os(rid, reason)
 
+        elif event == "os_pause":
+            log.info("[BRIDGE os_pause]   OS=%s", os_num)
+            self._client.pause_robot(rid)
+
+        elif event == "os_resume":
+            log.info("[BRIDGE os_resume]  OS=%s", os_num)
+            self._client.resume_robot(rid)
+
         else:
             log.debug("Evento desconhecido ignorado: %s", event)
 
@@ -270,6 +292,7 @@ class EMRPoller:
         self._robot_id = robot_id
         self._prev_os_code: str | None = None
         self._prev_units:   int        = 0
+        self._prev_status:  str        = ""
 
     def _fetch(self) -> dict | None:
         try:
@@ -286,6 +309,8 @@ class EMRPoller:
         order         = robot.get("current_order")
         curr_os_code  = order.get("os_code") if order else None
         curr_units    = int(robot.get("units_separated", 0))
+
+        curr_status = robot.get("status", "")
 
         if curr_os_code and curr_os_code != self._prev_os_code:
             total       = int(order.get("expected_units", 1)) if order else 1
@@ -307,8 +332,17 @@ class EMRPoller:
                 self._writer.send_cmd({"cmd": "os_cancel", "num": self._prev_os_code,
                                        "done": self._prev_units, "reason": motivo})
 
+        # Detecta pausa/retomada pelo painel web
+        if curr_status == "paused" and self._prev_status != "paused" and curr_os_code:
+            log.info("[POLLER] OS %s pausada pelo painel", curr_os_code)
+            self._writer.send_cmd({"cmd": "os_pause", "num": curr_os_code})
+        elif self._prev_status == "paused" and curr_status == "running" and curr_os_code:
+            log.info("[POLLER] OS %s retomada pelo painel", curr_os_code)
+            self._writer.send_cmd({"cmd": "os_resume", "num": curr_os_code})
+
         self._prev_os_code = curr_os_code
         self._prev_units   = curr_units
+        self._prev_status  = curr_status
 
     def run(self) -> None:
         log.info("Poller EMR iniciado (intervalo: %.1fs)", POLL_INTERVAL)
@@ -329,49 +363,77 @@ def run_serial_loop(
     processor: EventProcessor,
     writer: SerialWriter,
     poller: EMRPoller,
+    robot_info: dict | None = None,
 ) -> None:
     log.info("Abrindo porta serial %s @ %d baud…", port, baud)
     poll_started = False
     while True:
         try:
-            with serial.Serial(port, baud, timeout=1) as ser:
-                log.info("Porta %s aberta. Aguardando eventos do ESP32…", port)
-                writer.attach(ser)
+            # Abre a porta sem tocar no DTR/RTS para evitar reset do ESP32
+            ser = serial.Serial()
+            ser.port     = port
+            ser.baudrate = baud
+            ser.timeout  = 1
+            ser.dtr      = False   # Mantém DTR baixo — evita reset no ESP32
+            ser.rts      = False
+            ser.open()
 
-                if not poll_started:
-                    threading.Thread(target=poller.run, daemon=True, name="emr_poller").start()
-                    poll_started = True
+            log.info("Porta %s aberta. Aguardando eventos do ESP32…", port)
+            writer.attach(ser)
 
-                while True:
-                    raw = ser.readline()
-                    if not raw:
-                        continue
-                    line = raw.decode("utf-8", errors="replace").strip()
-                    if BRIDGE_PREFIX not in line:
-                        continue
+            # Envia informações do robô ao ESP32 para atualizar a tela
+            if robot_info:
+                writer.send_cmd({
+                    "cmd":  "set_device",
+                    "name": robot_info.get("name", ""),
+                    "code": robot_info.get("code", ""),
+                })
 
-                    idx      = line.index(BRIDGE_PREFIX) + len(BRIDGE_PREFIX)
-                    json_str = line[idx:].strip()
-                    try:
-                        ev = json.loads(json_str)
-                    except json.JSONDecodeError as exc:
-                        log.warning("JSON inválido ignorado (%s): %r", exc, json_str)
-                        continue
-                    try:
-                        processor.handle(ev)
-                    except requests.HTTPError as exc:
-                        log.error("Erro HTTP: %s", exc)
-                    except requests.ConnectionError:
-                        log.error("Backend inacessível. Verifique se o servidor está rodando.")
-                    except Exception as exc:
-                        log.error("Erro: %s", exc, exc_info=True)
+            if not poll_started:
+                threading.Thread(target=poller.run, daemon=True, name="emr_poller").start()
+                poll_started = True
+
+            while True:
+                raw = ser.readline()
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="replace").strip()
+                if BRIDGE_PREFIX not in line:
+                    continue
+                idx      = line.index(BRIDGE_PREFIX) + len(BRIDGE_PREFIX)
+                json_str = line[idx:].strip()
+                try:
+                    ev = json.loads(json_str)
+                except json.JSONDecodeError as exc:
+                    log.warning("JSON inválido ignorado (%s): %r", exc, json_str)
+                    continue
+                try:
+                    processor.handle(ev)
+                except requests.HTTPError as exc:
+                    log.error("Erro HTTP: %s", exc)
+                except requests.ConnectionError:
+                    log.error("Backend inacessível. Verifique se o servidor está rodando.")
+                except Exception as exc:
+                    log.error("Erro: %s", exc, exc_info=True)
 
         except serial.SerialException as exc:
             writer.detach()
+            if "ser" in dir() and ser.is_open:  # type: ignore[name-defined]
+                try:
+                    ser.dtr = False
+                    ser.close()
+                except Exception:
+                    pass
             log.error("Porta serial: %s. Reconectando em %ds…", exc, RETRY_DELAY_S)
             time.sleep(RETRY_DELAY_S)
         except KeyboardInterrupt:
             writer.detach()
+            if "ser" in dir() and ser.is_open:  # type: ignore[name-defined]
+                try:
+                    ser.dtr = False
+                    ser.close()
+                except Exception:
+                    pass
             log.info("Gateway encerrado.")
             break
 
@@ -504,6 +566,7 @@ def run_wizard(saved: dict) -> dict:
         "user":       user,
         "password":   pwd,
         "robot_code": chosen_robot["code"],
+        "robot_name": chosen_robot.get("name", chosen_robot["code"]),
         "robot_id":   chosen_robot["id"],
         "port":       chosen_port,
         "baud":       baud,
@@ -589,6 +652,7 @@ def main() -> None:
         user       = cfg["user"]
         password   = cfg["password"]
         robot_code = cfg["robot_code"]
+        robot_name = cfg.get("robot_name", robot_code)
         robot_id   = cfg["robot_id"]
         port       = cfg["port"]
         baud       = cfg["baud"]
@@ -617,17 +681,19 @@ def main() -> None:
         if robot is None:
             log.error("Robô '%s' não encontrado no EMR.", robot_code)
             sys.exit(1)
-        robot_id = robot["id"]
-        log.info("Robô '%s' encontrado → ID=%d", robot_code, robot_id)
+        robot_id   = robot["id"]
+        robot_name = robot.get("name", robot_code)
+        log.info("Robô '%s' encontrado → ID=%d  nome='%s'", robot_code, robot_id, robot_name)
 
     log.info("=== Gateway ESP32-P4 ↔ EMR iniciado ===")
-    log.info("Separador : %s (ID=%d)", robot_code, robot_id)
+    log.info("Separador : %s — %s (ID=%d)", robot_code, robot_name, robot_id)
     log.info("Porta     : %s @ %d baud", port, baud)
 
     writer    = SerialWriter()
     processor = EventProcessor(client, robot_id)
     poller    = EMRPoller(client, writer, robot_id)
-    run_serial_loop(port, baud, processor, writer, poller)
+    robot_info = {"name": robot_name, "code": robot_code, "id": robot_id}
+    run_serial_loop(port, baud, processor, writer, poller, robot_info)
 
 
 if __name__ == "__main__":

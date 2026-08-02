@@ -30,6 +30,7 @@ def get_status():
         "port": s.port,
         "robot_id": s.robot_id,
         "robot_name": s.robot_name,
+        "robot_code": s.robot_code,
         "error": s.error,
     }
 
@@ -38,10 +39,8 @@ def get_status():
 def connect(req: ConnectRequest):
     try:
         serial_gateway.connect(
-            port=req.port,
-            baud=115200,
-            robot_id=req.robot_id,
-            robot_name=req.robot_name,
+            port=req.port, baud=115200,
+            robot_id=req.robot_id, robot_name=req.robot_name,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

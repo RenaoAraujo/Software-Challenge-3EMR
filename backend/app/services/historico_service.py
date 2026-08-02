@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -66,12 +67,31 @@ def _os_concluidas_por_dia(de: date, ate: date, orders: list[ServiceOrder]) -> l
     return out
 
 
+def _classe_de_item(item: object) -> str:
+    """Extrai a classe terapêutica de um item do medicines_json (string ou dict)."""
+    if isinstance(item, dict):
+        classe = str(item.get("classe_remedio") or item.get("classe") or "").strip()
+        if classe:
+            return classe
+        nome = str(item.get("remedio") or item.get("nome") or item.get("name") or "").strip()
+        return classify_medicine(nome)
+    return classify_medicine(str(item).strip())
+
+
 def _medicamentos_por_classe(orders: list[ServiceOrder]) -> list[HistoricoClasseMedicamento]:
     """Classifica todas as linhas de medicamento do período e devolve contagem + percentual por classe (desc)."""
     counts: dict[str, int] = defaultdict(int)
     for o in orders:
-        for med in o.medicines:
-            counts[classify_medicine(med)] += 1
+        try:
+            data = json.loads(o.medicines_json or "[]")
+        except Exception:
+            data = []
+        if not isinstance(data, list):
+            continue
+        for item in data:
+            classe = _classe_de_item(item)
+            if classe:
+                counts[classe] += 1
     total = sum(counts.values())
     if total == 0:
         return []

@@ -7,8 +7,6 @@ from sqlalchemy.orm import Session
 from app.models.entities import Robot, RobotStatus, ServiceOrder, ServiceOrderStatus
 from app.repositories.robot_repository import RobotRepository
 from app.repositories.service_order_repository import ServiceOrderRepository
-from app.services.product_catalog import random_products
-
 # Mantido para compatibilidade com código que importa esta constante.
 _RANDOM_MEDICINE_CLASSES: tuple[str, ...] = ()
 
@@ -147,10 +145,9 @@ class AssignmentService:
         self._strip_cancel_snapshot(order)
 
         if reopen_mode == "restart":
-            meds = random_products(quantidade_remedios)
             order.client_name = (client_name or "").strip()
             order.expected_units = quantidade_remedios
-            order.medicines_json = json.dumps(meds, ensure_ascii=False)
+            order.medicines_json = "[]"
             order.description = "OS manual — teste"
             resume = 0
         else:
@@ -197,14 +194,13 @@ class AssignmentService:
                 )
             raise AssignmentError("Já existe uma OS com este número.", "duplicate_os")
 
-        meds = random_products(quantidade_remedios)
         order = ServiceOrder(
             os_code=code,
             description="OS manual — teste",
             client_name=(client_name or "").strip(),
             expected_units=quantidade_remedios,
             status=ServiceOrderStatus.PENDING.value,
-            medicines_json=json.dumps(meds, ensure_ascii=False),
+            medicines_json="[]",
         )
         self._db.add(order)
         self._db.flush()

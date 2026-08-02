@@ -4577,12 +4577,12 @@
 
   function syncSerialModalState() {
     const s = serialStatus;
-    const statusRow = document.getElementById("serial-status-row");
+    const statusRow  = document.getElementById("serial-status-row");
     const statusText = document.getElementById("serial-modal-status-text");
-    const portSel = document.getElementById("serial-port-select");
-    const robotSel = document.getElementById("serial-robot-select");
-    const btnConn = document.getElementById("btn-serial-connect");
-    const btnDisc = document.getElementById("btn-serial-disconnect");
+    const portSel    = document.getElementById("serial-port-select");
+    const robotSel   = document.getElementById("serial-robot-select");
+    const btnConn    = document.getElementById("btn-serial-connect");
+    const btnDisc    = document.getElementById("btn-serial-disconnect");
     if (!btnConn || !btnDisc) return;
 
     const isActive = s.connected || s.connecting || !!s.error;
@@ -4593,7 +4593,7 @@
       if (statusText) statusText.textContent = `Conectado: ${s.port} — ${s.robot_name || "—"}`;
       btnConn.hidden = true;
       btnDisc.hidden = false;
-      if (portSel) portSel.disabled = true;
+      if (portSel)  portSel.disabled  = true;
       if (robotSel) robotSel.disabled = true;
     } else if (s.connecting) {
       if (statusRow) statusRow.className = "serial-status-row";
@@ -4605,7 +4605,7 @@
       if (statusText && s.error) statusText.textContent = `Erro: ${s.error}`;
       btnConn.hidden = false;
       btnDisc.hidden = true;
-      if (portSel) portSel.disabled = false;
+      if (portSel)  portSel.disabled  = false;
       if (robotSel) robotSel.disabled = false;
     }
   }
@@ -4618,11 +4618,11 @@
     document.body.classList.add("modal-open");
     syncSerialModalState();
     void loadSerialPorts();
-    // preenche separadores
+    // Preenche dropdown de separadores
     const robotSel = document.getElementById("serial-robot-select");
     if (robotSel && robotsCache.length) {
       robotSel.innerHTML = robotsCache.map((r) =>
-        `<option value="${r.id}" data-name="${r.name}">${r.name} (${r.code})</option>`
+        `<option value="${r.id}" data-name="${r.name}" data-code="${r.code}">${r.name}  [${r.code}]</option>`
       ).join("");
     }
   }
@@ -4656,13 +4656,13 @@
     document.getElementById("form-serial-connect")
       ?.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const port = document.getElementById("serial-port-select")?.value;
+        const port     = document.getElementById("serial-port-select")?.value;
         const robotSel = document.getElementById("serial-robot-select");
-        const robotId = parseInt(robotSel?.value || "0", 10);
+        const robotId  = parseInt(robotSel?.value || "0", 10);
         const robotName = robotSel?.options[robotSel.selectedIndex]?.dataset?.name || "";
-        const btnConn = document.getElementById("btn-serial-connect");
+        const btnConn  = document.getElementById("btn-serial-connect");
 
-        if (!port) { toast("Selecione uma porta serial.", "error"); return; }
+        if (!port)    { toast("Selecione uma porta serial.", "error"); return; }
         if (!robotId) { toast("Selecione um separador.", "error"); return; }
 
         if (btnConn) btnConn.disabled = true;

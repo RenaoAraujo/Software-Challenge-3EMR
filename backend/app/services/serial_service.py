@@ -23,13 +23,14 @@ from app.models.entities import Robot, RobotStatus, ServiceOrder, ServiceOrderSt
 from app.repositories.robot_repository import RobotRepository
 from app.schemas.robot import RobotUpdateBody
 from app.services.assignment_service import AssignmentService
+from app.services.product_catalog import random_products
 from app.services.robot_service import RobotService
 
 log = logging.getLogger("serial_service")
 
 BRIDGE_PREFIX = "BRIDGE:"
 CMD_PREFIX = "CMD:"
-POLL_INTERVAL = 2.0
+POLL_INTERVAL = 0.3
 RETRY_DELAY_S = 3
 
 
@@ -43,6 +44,7 @@ class SerialStatus:
     baud: int = 115200
     robot_id: int | None = None
     robot_name: str | None = None
+    robot_code: str | None = None
     error: str | None = None
     connecting: bool = False
 
@@ -161,21 +163,35 @@ class _InternalClient:
             RobotService(db).update_units_separated(self._robot_id, units)
             log.info("Progresso: %d unidades (robô %d)", units, self._robot_id)
 
-            # Grava o timestamp exato de coleta do remédio na posição units-1
+            # Seleciona aleatoriamente o remédio coletado e registra o timestamp exato
             if order_id is not None:
                 order = db.get(ServiceOrder, order_id)
                 if order is not None:
                     try:
                         items = json.loads(order.medicines_json or "[]")
                         idx = units - 1  # índice base-0 do remédio recém-coletado
-                        if 0 <= idx < len(items) and isinstance(items[idx], dict):
-                            if not items[idx].get("picked_at"):
-                                items[idx]["picked_at"] = datetime.now(UTC).isoformat()
+                        now_ts = datetime.now(UTC).isoformat()
+                        if idx < len(items):
+                            # Slot já existe (ex: OS retomada) — só registra timestamp
+                            if isinstance(items[idx], dict) and not items[idx].get("picked_at"):
+                                items[idx]["picked_at"] = now_ts
                                 order.medicines_json = json.dumps(items, ensure_ascii=False)
                                 db.add(order)
                                 db.commit()
+                        else:
+                            # Seleção aleatória disparada pelo pick da ESP32
+                            [new_med] = random_products(1)
+                            new_med["picked_at"] = now_ts
+                            items.append(new_med)
+                            order.medicines_json = json.dumps(items, ensure_ascii=False)
+                            db.add(order)
+                            db.commit()
+                            log.info(
+                                "Pick ESP32 #%d → %s (%s)",
+                                units, new_med.get("remedio"), new_med.get("remedio_id"),
+                            )
                     except Exception as exc:
-                        log.warning("Falha ao registrar timestamp de coleta: %s", exc)
+                        log.warning("Falha ao registrar remédio coletado: %s", exc)
         except ValueError as exc:
             log.debug("update_units ignorado: %s", exc)
         finally:
@@ -189,6 +205,50 @@ class _InternalClient:
             log.info("OS concluída no robô %d", self._robot_id)
         except ValueError as exc:
             log.info("complete_os ignorado (provavelmente já concluída): %s", exc)
+        finally:
+            db.close()
+
+    # ── encontra ou cria robô pelo código (usado na auto-descoberta) ─────────
+    def find_or_create_robot_by_code(self, code: str, name: str) -> int:
+        db = self._db()
+        try:
+            robot: Robot | None = db.scalar(select(Robot).where(Robot.code == code))
+            if robot is None:
+                robot = Robot(code=code, name=name, status=RobotStatus.IDLE.value)
+                db.add(robot)
+                db.commit()
+                db.refresh(robot)
+                log.info("Auto-descoberta: robô '%s' (%s) criado (id=%d)", name, code, robot.id)
+            else:
+                if robot.name != name:
+                    robot.name = name
+                    db.add(robot)
+                    db.commit()
+                log.info("Auto-descoberta: robô '%s' (%s) encontrado (id=%d)", name, code, robot.id)
+            self._robot_id = robot.id
+            return robot.id
+        finally:
+            db.close()
+
+    # ── pausa a OS atual ──────────────────────────────────────────────────────
+    def pause_os(self) -> None:
+        db = self._db()
+        try:
+            RobotService(db).pause_separation(self._robot_id)
+            log.info("OS pausada no robô %d (solicitado pela ESP32)", self._robot_id)
+        except ValueError as exc:
+            log.info("pause_os ignorado: %s", exc)
+        finally:
+            db.close()
+
+    # ── retoma a OS pausada ───────────────────────────────────────────────────
+    def resume_os(self) -> None:
+        db = self._db()
+        try:
+            RobotService(db).resume_separation(self._robot_id)
+            log.info("OS retomada no robô %d (solicitado pela ESP32)", self._robot_id)
+        except ValueError as exc:
+            log.info("resume_os ignorado: %s", exc)
         finally:
             db.close()
 
@@ -225,7 +285,7 @@ class _SerialWriter:
             self._port = None
 
     def send_cmd(self, cmd: dict) -> bool:
-        line = CMD_PREFIX + json.dumps(cmd, ensure_ascii=False) + "\n"
+        line = CMD_PREFIX + json.dumps(cmd, ensure_ascii=False, separators=(',', ':')) + "\n"
         with self._lock:
             if self._port is None or not self._port.is_open:
                 return False
@@ -241,12 +301,38 @@ class _SerialWriter:
 # Processador de eventos BRIDGE (ESP32 → painel)
 # ---------------------------------------------------------------------------
 class _EventProcessor:
-    def __init__(self, client: _InternalClient) -> None:
+    def __init__(
+        self,
+        client: _InternalClient,
+        robot_code: str = "",
+        on_pong: Any = None,
+    ) -> None:
         self._c = client
+        self._robot_code = robot_code
+        self._on_pong = on_pong  # callback(code, name) chamado ao receber pong
 
     def handle(self, ev: dict) -> None:
         event = ev.get("ev", "")
         os_num = ev.get("num", "?")
+
+        bridge_robot = ev.get("robot", "")
+
+        # Pong: auto-descoberta de identidade da ESP32
+        if event == "pong":
+            code = bridge_robot or ev.get("robot", "")
+            name = ev.get("name", code)
+            log.info("BRIDGE pong recebido: robot='%s' name='%s'", code, name)
+            if self._on_pong and code:
+                self._on_pong(code, name)
+            return
+
+        # Valida o campo robot contra o código registrado no banco
+        if bridge_robot and self._robot_code and bridge_robot != self._robot_code:
+            log.warning(
+                "BRIDGE: campo robot='%s' não corresponde ao separador registrado '%s'. "
+                "Verifique BRIDGE_ROBOT_CODE no firmware.",
+                bridge_robot, self._robot_code,
+            )
 
         if event == "os_start":
             client_name = ev.get("client", "")
@@ -273,6 +359,14 @@ class _EventProcessor:
             self._c.update_units(done)
             self._c.cancel_os(reason)
 
+        elif event == "os_pause":
+            log.info("[BRIDGE os_pause] OS=%s", os_num)
+            self._c.pause_os()
+
+        elif event == "os_resume":
+            log.info("[BRIDGE os_resume] OS=%s", os_num)
+            self._c.resume_os()
+
         else:
             log.debug("Evento desconhecido: %s", event)
 
@@ -286,6 +380,7 @@ class _EMRPoller:
         self._writer = writer
         self._prev_os_code: str | None = None
         self._prev_units: int = 0
+        self._prev_status: str = ""
 
     def tick(self) -> None:
         state = self._c.get_robot_state()
@@ -295,8 +390,10 @@ class _EMRPoller:
         order = state.get("current_order")
         curr_os_code = order.get("os_code") if order else None
         curr_units = int(state.get("units_separated") or 0)
+        curr_status = str(state.get("status") or "")
 
         if curr_os_code and curr_os_code != self._prev_os_code:
+            # Nova OS atribuída → envia os_assign
             total = int(order.get("expected_units") or 1) if order else 1
             client_name = order.get("client_name", "") if order else ""
             self._writer.send_cmd({
@@ -305,6 +402,7 @@ class _EMRPoller:
             })
 
         elif self._prev_os_code and not curr_os_code:
+            # OS desapareceu → concluída ou cancelada
             closed = self._c.get_last_closed_order(self._prev_os_code)
             if closed and closed.get("situacao") == "concluida":
                 self._writer.send_cmd({
@@ -318,8 +416,18 @@ class _EMRPoller:
                     "done": self._prev_units, "reason": motivo,
                 })
 
+        elif curr_os_code and curr_os_code == self._prev_os_code:
+            # Mesma OS — verifica mudança de pausa/retomada
+            if curr_status == "paused" and self._prev_status != "paused":
+                self._writer.send_cmd({"cmd": "os_pause", "num": curr_os_code})
+                log.info("Poller: enviando os_pause para %s", curr_os_code)
+            elif curr_status == "running" and self._prev_status == "paused":
+                self._writer.send_cmd({"cmd": "os_resume", "num": curr_os_code})
+                log.info("Poller: enviando os_resume para %s", curr_os_code)
+
         self._prev_os_code = curr_os_code
         self._prev_units = curr_units
+        self._prev_status = curr_status
 
     def run(self, stop_event: threading.Event) -> None:
         while not stop_event.is_set():
@@ -387,8 +495,21 @@ class SerialGatewayService:
         stop_event: threading.Event,
     ) -> None:
         client = _InternalClient(robot_id)
+
+        # Busca o código do robô para validar o campo robot nos eventos BRIDGE
+        robot_code = ""
+        try:
+            db = SessionLocal()
+            try:
+                robot_obj = RobotRepository(db).get_by_id(robot_id)
+                robot_code = robot_obj.code if robot_obj else ""
+            finally:
+                db.close()
+        except Exception as exc:
+            log.warning("Não foi possível buscar o código do robô: %s", exc)
+
         writer = _SerialWriter()
-        processor = _EventProcessor(client)
+        processor = _EventProcessor(client, robot_code)
         poller = _EMRPoller(client, writer)
         poll_started = False
 
@@ -403,7 +524,16 @@ class SerialGatewayService:
                         self.status = SerialStatus(
                             connected=True, port=port, baud=baud,
                             robot_id=robot_id, robot_name=robot_name,
+                            robot_code=robot_code,
                         )
+
+                    # Envia identidade do robô para a ESP32 atualizar a aba Dispositivo
+                    writer.send_cmd({
+                        "cmd": "set_device",
+                        "name": robot_name,
+                        "code": robot_code,
+                    })
+                    log.info("CMD:set_device enviado → name='%s' code='%s'", robot_name, robot_code)
 
                     if not poll_started:
                         threading.Thread(
@@ -443,6 +573,7 @@ class SerialGatewayService:
                     self.status = SerialStatus(
                         port=port, baud=baud,
                         robot_id=robot_id, robot_name=robot_name,
+                        robot_code=robot_code,
                         error=f"Porta perdida: {err_msg}. Reconectando…",
                     )
                 stop_event.wait(RETRY_DELAY_S)

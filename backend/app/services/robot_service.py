@@ -155,9 +155,9 @@ class RobotService:
         robot = self._repo.get_by_id(robot_id)
         if robot is None:
             return None, None
-        if robot.status != RobotStatus.RUNNING.value:
+        if robot.status not in (RobotStatus.RUNNING.value, RobotStatus.PAUSED.value):
             raise ValueError(
-                "Só é possível registrar unidades com o separador em execução (não pausado)."
+                "Só é possível registrar unidades com o separador em execução ou pausado."
             )
         if units < 0:
             raise ValueError("units_separated não pode ser negativo.")
