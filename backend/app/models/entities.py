@@ -130,7 +130,19 @@ class ServiceOrder(Base):
             data = json.loads(self.medicines_json or "[]")
             if not isinstance(data, list):
                 return []
-            return [str(x).strip() for x in data if str(x).strip()]
+            names: list[str] = []
+            for item in data:
+                if isinstance(item, dict):
+                    nome = str(
+                        item.get("remedio") or item.get("nome") or item.get("name") or ""
+                    ).strip()
+                    if nome:
+                        names.append(nome)
+                else:
+                    text = str(item).strip()
+                    if text:
+                        names.append(text)
+            return names
         except json.JSONDecodeError:
             return []
 

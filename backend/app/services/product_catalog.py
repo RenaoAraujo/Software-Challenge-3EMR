@@ -69,6 +69,40 @@ def catalog_size() -> int:
     return len(_load())
 
 
+def list_products() -> list[dict[str, Any]]:
+    """Catálogo ordenado pelo nome (SKU), para seleção na OS."""
+    items = [dict(p) for p in _load()]
+    items.sort(key=lambda p: str(p.get("remedio") or "").casefold())
+    return items
+
+
+def find_product(remedio_id: str) -> dict[str, Any] | None:
+    key = (remedio_id or "").strip()
+    if not key:
+        return None
+    for product in _load():
+        if str(product.get("remedio_id") or "") == key:
+            return dict(product)
+    return None
+
+
+def expand_selected_items(itens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Repete cada produto conforme a quantidade, na ordem informada.
+
+    Levanta KeyError com o id quando o remédio não existe no catálogo.
+    """
+    expanded: list[dict[str, Any]] = []
+    for item in itens:
+        rid = str(item.get("remedio_id") or "").strip()
+        qty = int(item.get("quantidade") or 0)
+        product = find_product(rid)
+        if product is None:
+            raise KeyError(rid or "?")
+        for _ in range(max(0, qty)):
+            expanded.append(dict(product))
+    return expanded
+
+
 def random_products(
     quantidade: int,
     *,

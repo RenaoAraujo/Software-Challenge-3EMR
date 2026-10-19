@@ -957,7 +957,7 @@
       aria-describedby="manual-os-modal-desc"
     >
       <button type="button" class="modal__backdrop" data-manual-os-modal-dismiss aria-label="Fechar"></button>
-      <div class="modal__panel modal__panel--form">
+      <div class="modal__panel modal__panel--form modal__panel--os">
         <div class="modal__icon-wrap modal__icon-wrap--add" aria-hidden="true">
           <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none" viewBox="0 0 24 24">
             <path
@@ -972,7 +972,7 @@
         </div>
         <h2 id="manual-os-modal-title" class="modal__title">Nova OS manual (teste)</h2>
         <p id="manual-os-modal-desc" class="modal__text modal__text--lede">
-          Crie uma ordem com número, cliente e quantidade de remédios; escolha o separador
+          Crie uma ordem com número, cliente e os remédios (com a quantidade de cada um); escolha o separador
           <strong>ocioso (idle)</strong>. Se o número for de uma OS já <strong>cancelada</strong>, o sistema
           pergunta se o separador continua de onde parou ou refaz o pedido. Opcional: simular 1 unidade a cada 3–10 s (aleatório).
         </p>
@@ -994,10 +994,16 @@
               >O separador deve estar <strong>online</strong> e <strong>sem OS</strong> (ocioso).</span
             >
           </label>
-          <label class="field">
-            <span class="field__label">Quantidade de remédios (unidades)</span>
-            <input type="number" id="manual-os-qty" name="quantidade_remedios" min="1" max="500" value="5" required />
-          </label>
+          <fieldset class="os-items-field">
+            <legend class="field__label">Remédios</legend>
+            <div id="manual-os-items" class="os-items"></div>
+            <div class="os-items__foot">
+              <p class="os-items__total" id="manual-os-items-total">Total: 1 unidade</p>
+              <button type="button" class="btn btn--ghost btn--small" id="manual-os-add-item">
+                Adicionar remédio
+              </button>
+            </div>
+          </fieldset>
           <label class="field field--checkbox">
             <input type="checkbox" id="manual-os-simulate" name="simular" checked />
             <span class="field__label field__label--inline">Simular separação (1 unidade a cada 3–10 s, aleatório)</span>

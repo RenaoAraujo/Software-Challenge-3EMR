@@ -156,7 +156,9 @@
     manualOsCode: document.getElementById("manual-os-code"),
     manualOsClient: document.getElementById("manual-os-client"),
     manualOsRobot: document.getElementById("manual-os-robot"),
-    manualOsQty: document.getElementById("manual-os-qty"),
+    manualOsItems: document.getElementById("manual-os-items"),
+    manualOsItemsTotal: document.getElementById("manual-os-items-total"),
+    manualOsAddItem: document.getElementById("manual-os-add-item"),
     manualOsSimulate: document.getElementById("manual-os-simulate"),
     btnManualOsSubmit: document.getElementById("btn-manual-os-submit"),
     manualOsModal: document.getElementById("manual-os-modal"),
@@ -782,9 +784,10 @@
     manualOsModalPreviousFocus = document.activeElement;
     try {
       await fetchCsrf();
+      await ensureCatalogProducts();
       populateManualOsRobotSelect();
       el.formManualOs?.reset();
-      if (el.manualOsQty) el.manualOsQty.value = "5";
+      resetManualOsItems();
       if (el.manualOsSimulate) el.manualOsSimulate.checked = true;
       el.manualOsModal.hidden = false;
       el.manualOsModal.setAttribute("aria-hidden", "false");
@@ -1825,6 +1828,121 @@
     if (prev && robotsCache.some((x) => String(x.id) === prev)) {
       el.manualOsRobot.value = prev;
     }
+  }
+
+  let catalogProducts = [];
+
+  async function ensureCatalogProducts() {
+    if (catalogProducts.length) return catalogProducts;
+    const res = await fetch(`${API_BASE}/service-orders/catalog`, FETCH_CRED);
+    if (res.status === 401) {
+      window.location.replace("/login.html");
+      return [];
+    }
+    if (!res.ok) {
+      throw new Error("Não foi possível carregar a lista de remédios.");
+    }
+    const data = await res.json();
+    catalogProducts = Array.isArray(data) ? data : [];
+    return catalogProducts;
+  }
+
+  function fillMedicineSelect(select, filterText, selectedId) {
+    const query = (filterText || "").trim().toLowerCase();
+    const current = selectedId || "";
+    select.innerHTML = "";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = catalogProducts.length ? "Selecione o remédio…" : "Nenhum remédio no catálogo";
+    select.appendChild(blank);
+    catalogProducts.forEach((product) => {
+      const id = String(product.remedio_id || "");
+      const label = product.remedio || id;
+      const hay = `${label} ${id} ${product.classe_remedio || ""}`.toLowerCase();
+      if (query && !hay.includes(query) && id !== current) return;
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = label;
+      select.appendChild(opt);
+    });
+    if (current && [...select.options].some((opt) => opt.value === current)) {
+      select.value = current;
+    }
+  }
+
+  function updateManualOsTotal() {
+    if (!el.manualOsItemsTotal) return;
+    const rows = el.manualOsItems?.querySelectorAll(".os-item") || [];
+    let total = 0;
+    rows.forEach((row) => {
+      const qty = parseInt(row.querySelector(".os-item__qty")?.value || "0", 10);
+      if (!Number.isNaN(qty) && qty > 0) total += qty;
+    });
+    el.manualOsItemsTotal.textContent =
+      total === 1 ? "Total: 1 unidade" : `Total: ${total} unidades`;
+  }
+
+  function addManualOsItemRow() {
+    if (!el.manualOsItems) return;
+    const row = document.createElement("div");
+    row.className = "os-item";
+    row.innerHTML = `
+      <div class="os-item__med">
+        <input type="search" class="os-item__search" placeholder="Buscar remédio" autocomplete="off" aria-label="Buscar remédio" />
+        <select class="os-item__select" required aria-label="Remédio"></select>
+      </div>
+      <label class="os-item__qty-wrap">
+        <span class="os-item__qty-label">Qtd</span>
+        <input type="number" class="os-item__qty" min="1" max="500" value="1" required aria-label="Quantidade" />
+      </label>
+      <button type="button" class="os-item__remove" aria-label="Remover remédio">×</button>
+    `;
+    const search = row.querySelector(".os-item__search");
+    const select = row.querySelector(".os-item__select");
+    const qty = row.querySelector(".os-item__qty");
+    fillMedicineSelect(select, "", "");
+    search.addEventListener("input", () => {
+      fillMedicineSelect(select, search.value, select.value);
+    });
+    qty.addEventListener("input", updateManualOsTotal);
+    row.querySelector(".os-item__remove").addEventListener("click", () => {
+      const rows = el.manualOsItems.querySelectorAll(".os-item");
+      if (rows.length <= 1) {
+        search.value = "";
+        qty.value = "1";
+        fillMedicineSelect(select, "", "");
+        updateManualOsTotal();
+        return;
+      }
+      row.remove();
+      updateManualOsTotal();
+    });
+    el.manualOsItems.appendChild(row);
+    updateManualOsTotal();
+  }
+
+  function resetManualOsItems() {
+    if (!el.manualOsItems) return;
+    el.manualOsItems.innerHTML = "";
+    addManualOsItemRow();
+  }
+
+  function collectManualOsItems() {
+    const rows = [...(el.manualOsItems?.querySelectorAll(".os-item") || [])];
+    if (!rows.length) return { error: "Adicione ao menos um remédio." };
+    const itens = [];
+    for (const row of rows) {
+      const id = row.querySelector(".os-item__select")?.value || "";
+      const qty = parseInt(row.querySelector(".os-item__qty")?.value || "0", 10);
+      if (!id) return { error: "Selecione o remédio em todas as linhas." };
+      if (Number.isNaN(qty) || qty < 1 || qty > 500) {
+        return { error: "A quantidade de cada remédio deve ser entre 1 e 500." };
+      }
+      itens.push({ remedio_id: id, quantidade: qty });
+    }
+    const total = itens.reduce((sum, item) => sum + item.quantidade, 0);
+    if (total > 500) return { error: "A soma das quantidades deve ser no máximo 500." };
+    return { itens, total };
   }
 
   function isCancelOsModalOpen() {
@@ -3610,7 +3728,7 @@
 
   async function runManualOsSubmit(reopenCancelled) {
     const rid = parseInt(el.manualOsRobot?.value || "", 10);
-    const qty = parseInt(el.manualOsQty?.value || "0", 10);
+    const picked = collectManualOsItems();
     const code = el.manualOsCode?.value.trim() || "";
     if (!code) {
       toast("Informe o número da OS.", "error");
@@ -3620,8 +3738,8 @@
       toast("Selecione um separador.", "error");
       return;
     }
-    if (Number.isNaN(qty) || qty < 1 || qty > 500) {
-      toast("Quantidade de remédios deve ser entre 1 e 500.", "error");
+    if (picked.error) {
+      toast(picked.error, "error");
       return;
     }
     await fetchCsrf();
@@ -3633,7 +3751,7 @@
       os_code: code,
       client_name: el.manualOsClient?.value.trim() || "",
       robot_id: rid,
-      quantidade_remedios: qty,
+      itens: picked.itens,
     };
     if (reopenCancelled === "resume" || reopenCancelled === "restart") {
       body.reopen_cancelled = reopenCancelled;
@@ -3679,7 +3797,7 @@
       }
       closeManualOsReopenModal();
       el.formManualOs.reset();
-      if (el.manualOsQty) el.manualOsQty.value = "5";
+      resetManualOsItems();
       if (el.manualOsSimulate) el.manualOsSimulate.checked = true;
       closeManualOsModal();
       toast(
@@ -3692,7 +3810,7 @@
       const listBtn = el.robotList?.querySelector(`[data-id="${rid}"]`);
       listBtn?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       if (wantSimulate) {
-        startRemedySimulation(rid, order.expected_units ?? qty);
+        startRemedySimulation(rid, order.expected_units ?? picked.total);
       }
     } catch (e) {
       toast(e instanceof Error ? e.message : "Erro ao criar OS.", "error");
@@ -3706,6 +3824,12 @@
   el.formManualOs?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     await runManualOsSubmit(null);
+  });
+
+  el.manualOsAddItem?.addEventListener("click", () => {
+    addManualOsItemRow();
+    const rows = el.manualOsItems?.querySelectorAll(".os-item__search");
+    rows?.[rows.length - 1]?.focus();
   });
 
   el.formNewRobot.addEventListener("submit", async (ev) => {

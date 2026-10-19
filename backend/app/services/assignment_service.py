@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.entities import Robot, RobotStatus, ServiceOrder, ServiceOrderStatus
 from app.repositories.robot_repository import RobotRepository
 from app.repositories.service_order_repository import ServiceOrderRepository
+from app.services.product_catalog import expand_selected_items
 # Mantido para compatibilidade com código que importa esta constante.
 _RANDOM_MEDICINE_CLASSES: tuple[str, ...] = ()
 
@@ -122,6 +123,28 @@ class AssignmentService:
         order.total_pause_seconds = None
         order.status = ServiceOrderStatus.PENDING.value
 
+    @staticmethod
+    def _item_key(item: object) -> str:
+        if isinstance(item, dict):
+            return str(item.get("remedio_id") or item.get("remedio") or "").strip()
+        return str(item).strip()
+
+    def _medicines_json_from_itens(self, itens: list[dict] | None) -> str | None:
+        """JSON da lista expandida, ou None quando a OS não traz seleção de remédios."""
+        if not itens:
+            return None
+        try:
+            expanded = expand_selected_items(itens)
+        except KeyError as exc:
+            missing = exc.args[0] if exc.args else "?"
+            raise AssignmentError(
+                f"Remédio não encontrado no catálogo ({missing}).",
+                "unknown_medicine",
+            ) from exc
+        if not expanded:
+            raise AssignmentError("Informe ao menos 1 remédio.", "invalid_quantity")
+        return json.dumps(expanded, ensure_ascii=False)
+
     def _reactivate_cancelled_manual_order(
         self,
         order: ServiceOrder,
@@ -129,6 +152,7 @@ class AssignmentService:
         client_name: str,
         quantidade_remedios: int,
         reopen_mode: str | None,
+        medicines_json: str | None = None,
     ) -> ServiceOrder:
         saved_u = max(0, int(order.cancelled_separated_units or 0))
         expected = max(0, int(order.expected_units or 0))
@@ -147,16 +171,36 @@ class AssignmentService:
         if reopen_mode == "restart":
             order.client_name = (client_name or "").strip()
             order.expected_units = quantidade_remedios
-            order.medicines_json = "[]"
+            order.medicines_json = medicines_json if medicines_json is not None else "[]"
             order.description = "OS manual — teste"
             resume = 0
         else:
             if quantidade_remedios != int(order.expected_units or 0):
                 raise AssignmentError(
-                    "Para retomar de onde parou, mantenha a mesma quantidade de remédios "
+                    "Para retomar de onde parou, mantenha os mesmos remédios e quantidades "
                     "da OS cancelada.",
                     "resume_qty_mismatch",
                 )
+            if medicines_json is not None:
+                try:
+                    stored = json.loads(order.medicines_json or "[]")
+                except json.JSONDecodeError:
+                    stored = []
+                expected = int(order.expected_units or 0)
+                planned_ahead = (
+                    isinstance(stored, list) and expected > 0 and len(stored) == expected
+                )
+                if planned_ahead:
+                    incoming = json.loads(medicines_json)
+                    same = [self._item_key(x) for x in stored] == [
+                        self._item_key(x) for x in incoming
+                    ]
+                    if not same:
+                        raise AssignmentError(
+                            "Para retomar de onde parou, mantenha os mesmos remédios e "
+                            "quantidades da OS cancelada.",
+                            "resume_items_mismatch",
+                        )
             order.client_name = (client_name or "").strip()
             resume = saved_u
 
@@ -174,13 +218,23 @@ class AssignmentService:
         client_name: str,
         quantidade_remedios: int,
         reopen_cancelled: str | None = None,
+        itens: list[dict] | None = None,
     ) -> ServiceOrder:
-        """Cria uma OS de teste com itens sintéticos e já envia ao separador."""
+        """Cria uma OS e já envia ao separador.
+
+        Com `itens`, a lista de remédios fica gravada na ordem escolhida.
+        Sem `itens`, só a quantidade é usada (o remédio entra na coleta).
+        """
         code = (os_code or "").strip()
         if not code:
             raise AssignmentError("Informe o número da OS.", "invalid_os_code")
-        if quantidade_remedios < 1:
+
+        medicines_json = self._medicines_json_from_itens(itens)
+        total = len(json.loads(medicines_json)) if medicines_json is not None else int(quantidade_remedios)
+        if total < 1:
             raise AssignmentError("Informe ao menos 1 remédio.", "invalid_quantity")
+        if total > 500:
+            raise AssignmentError("A soma das quantidades deve ser no máximo 500.", "invalid_quantity")
 
         dup = self._db.scalar(select(ServiceOrder).where(ServiceOrder.os_code == code))
         if dup is not None:
@@ -189,8 +243,9 @@ class AssignmentService:
                     dup,
                     robot_id,
                     client_name,
-                    quantidade_remedios,
+                    total,
                     reopen_cancelled,
+                    medicines_json,
                 )
             raise AssignmentError("Já existe uma OS com este número.", "duplicate_os")
 
@@ -198,9 +253,9 @@ class AssignmentService:
             os_code=code,
             description="OS manual — teste",
             client_name=(client_name or "").strip(),
-            expected_units=quantidade_remedios,
+            expected_units=total,
             status=ServiceOrderStatus.PENDING.value,
-            medicines_json="[]",
+            medicines_json=medicines_json if medicines_json is not None else "[]",
         )
         self._db.add(order)
         self._db.flush()

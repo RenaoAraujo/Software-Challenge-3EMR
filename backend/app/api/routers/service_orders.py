@@ -10,12 +10,14 @@ from app.api.dependencies import get_current_user, get_database, limit_sensitive
 from app.models.entities import User
 from app.repositories.service_order_repository import ServiceOrderRepository
 from app.schemas.service_order import (
+    CatalogProductOut,
     ExportBatchRequest,
     ManualOrderCreate,
     OrderReportItem,
     OrdersReportResponse,
     ServiceOrderOut,
 )
+from app.services.product_catalog import list_products
 from app.services.historico_service import _utc_day_range
 from app.services.assignment_service import (
     AssignmentError,
@@ -285,6 +287,11 @@ def export_single_order_report(
     )
 
 
+@router.get("/catalog", response_model=list[CatalogProductOut])
+def list_medicine_catalog() -> list[CatalogProductOut]:
+    return [CatalogProductOut.model_validate(item) for item in list_products()]
+
+
 @router.post("/manual", response_model=ServiceOrderOut, status_code=201)
 def create_manual_service_order(
     request: Request,
@@ -293,13 +300,22 @@ def create_manual_service_order(
     _: None = Depends(require_csrf_token),
     __: None = Depends(limit_sensitive),
 ) -> ServiceOrderOut:
+    itens = None
+    quantidade = body.quantidade_remedios or 0
+    if body.itens:
+        itens = [
+            {"remedio_id": line.remedio_id, "quantidade": line.quantidade}
+            for line in body.itens
+        ]
+        quantidade = sum(line.quantidade for line in body.itens)
     try:
         order = AssignmentService(db).create_manual_order_and_assign(
             body.robot_id,
             body.os_code,
             body.client_name,
-            body.quantidade_remedios,
+            quantidade,
             body.reopen_cancelled,
+            itens=itens,
         )
     except CancelledOsReuseRequired as e:
         raise HTTPException(

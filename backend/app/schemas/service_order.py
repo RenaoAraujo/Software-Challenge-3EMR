@@ -1,16 +1,36 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class ManualOrderLine(BaseModel):
+    """Um remédio escolhido na OS, com a quantidade de unidades."""
+
+    remedio_id: str = Field(..., min_length=1, max_length=64)
+    quantidade: int = Field(..., ge=1, le=500)
+
+
+class CatalogProductOut(BaseModel):
+    remedio_id: str = ""
+    remedio: str = ""
+    tipo_remedio: str = ""
+    classe_remedio: str = ""
+    peso_teorico: float | None = None
 
 
 class ManualOrderCreate(BaseModel):
-    """Criação manual de OS para testes (itens gerados automaticamente)."""
+    """Criação manual de OS. Com `itens`, os remédios vêm da seleção; senão, só a quantidade."""
 
     os_code: str = Field(..., min_length=1, max_length=64)
     client_name: str = Field(default="", max_length=256)
     robot_id: int = Field(..., ge=1)
-    quantidade_remedios: int = Field(..., ge=1, le=500)
+    quantidade_remedios: int | None = Field(default=None, ge=1, le=500)
+    itens: list[ManualOrderLine] | None = Field(
+        default=None,
+        max_length=40,
+        description="Remédios escolhidos e a quantidade de cada um. A soma vira o total da OS.",
+    )
     reopen_cancelled: Literal["resume", "restart"] | None = Field(
         default=None,
         description=(
@@ -18,6 +38,17 @@ class ManualOrderCreate(BaseModel):
             "ou refazer lista e contagem (restart). Omitir na primeira tentativa para receber 409."
         ),
     )
+
+    @model_validator(mode="after")
+    def _require_items_or_quantity(self) -> "ManualOrderCreate":
+        if self.itens:
+            total = sum(line.quantidade for line in self.itens)
+            if total < 1 or total > 500:
+                raise ValueError("A soma das quantidades deve ficar entre 1 e 500.")
+            return self
+        if self.quantidade_remedios is None:
+            raise ValueError("Informe os remédios da OS ou a quantidade total.")
+        return self
 
 
 class MedicineReportLine(BaseModel):
