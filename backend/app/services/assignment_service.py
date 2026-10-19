@@ -111,6 +111,10 @@ class AssignmentService:
         self._db.add(order)
         self._db.commit()
 
+        from app.services.os_dispatch import dispatch_order_json
+
+        dispatch_order_json(order)
+
     def _strip_cancel_snapshot(self, order: ServiceOrder) -> None:
         order.cancelled_at = None
         order.cancelled_by_robot_id = None

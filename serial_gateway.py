@@ -316,8 +316,19 @@ class EMRPoller:
             total       = int(order.get("expected_units", 1)) if order else 1
             client_name = order.get("client_name", "")        if order else ""
             log.info("[POLLER] Nova OS pelo painel: %s (%d unidades)", curr_os_code, total)
-            self._writer.send_cmd({"cmd": "os_assign", "num": curr_os_code,
-                                   "client": client_name, "total": total})
+            meds = (order.get("medicines") or []) if order else []
+            first = str(meds[0]).strip().split() if meds else []
+            medicamento = first[0].casefold() if first else ""
+            self._writer.send_cmd({
+                "cmd": "os_assign",
+                "num": curr_os_code,
+                "client": client_name,
+                "total": total,
+                "os": curr_os_code,
+                "quantidade": total,
+                "cliente": client_name,
+                "medicamento": medicamento,
+            })
 
         elif self._prev_os_code and not curr_os_code:
             closed  = self._client.get_last_closed_order(self._prev_os_code)

@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     # Conta de administrador (criada/atualizada na subida; acesso à aba Logs).
     admin_username: str = "admin"
     admin_password: str = "admin123"
+    # POST JSON {os, quantidade, cliente, medicamento} ao lançar uma OS. Vazio = não envia.
+    os_json_url: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

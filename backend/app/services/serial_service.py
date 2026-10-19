@@ -23,6 +23,7 @@ from app.models.entities import Robot, RobotStatus, ServiceOrder, ServiceOrderSt
 from app.repositories.robot_repository import RobotRepository
 from app.schemas.robot import RobotUpdateBody
 from app.services.assignment_service import AssignmentService
+from app.services.os_dispatch import medicine_first_name
 from app.services.product_catalog import random_products
 from app.services.robot_service import RobotService
 
@@ -77,6 +78,7 @@ class _InternalClient:
                     "os_code": order.os_code,
                     "expected_units": order.expected_units,
                     "client_name": order.client_name or "",
+                    "medicamento": medicine_first_name(order.medicines_json),
                 } if order is not None else None,
             }
         finally:
@@ -397,8 +399,14 @@ class _EMRPoller:
             total = int(order.get("expected_units") or 1) if order else 1
             client_name = order.get("client_name", "") if order else ""
             self._writer.send_cmd({
-                "cmd": "os_assign", "num": curr_os_code,
-                "client": client_name, "total": total,
+                "cmd": "os_assign",
+                "num": curr_os_code,
+                "client": client_name,
+                "total": total,
+                "os": curr_os_code,
+                "quantidade": total,
+                "cliente": client_name,
+                "medicamento": (order or {}).get("medicamento") or "",
             })
 
         elif self._prev_os_code and not curr_os_code:
